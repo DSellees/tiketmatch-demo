@@ -5,7 +5,6 @@
 
 // ── Estado de la app ─────────────────────────────────────────────────────────
 const state = {
-  cat: 'Discover',   // categoría seleccionada
   tab: 'home',       // pestaña activa de la barra inferior
   fav: new Set(),    // ids de eventos marcados como favoritos
 };
@@ -34,9 +33,6 @@ function render() {
           <span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:11px;background:${AC};">${SVG.sliders('#fff')}</span>
         </div>
       </div>
-
-      <!-- pills de categoría -->
-      ${catPills()}
 
       <!-- Eventos cerca de ti -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;margin:22px 0 12px;">
@@ -99,20 +95,7 @@ document.addEventListener('click', e => {
     return;
   }
 
-  // ② cambiar categoría
-  const catBtn = e.target.closest('[data-catbtn]');
-  if (catBtn) {
-    state.cat = catBtn.dataset.catbtn;
-    document.querySelectorAll('[data-catbtn]').forEach(b => {
-      const on = b.dataset.catbtn === state.cat;
-      b.style.background = on ? AC : '#F1F1F4';
-      b.style.color      = on ? '#fff' : '#374151';
-      b.style.boxShadow  = on ? '0 8px 18px rgba(255,87,34,0.35)' : 'none';
-    });
-    return;
-  }
-
-  // ③ cambiar pestaña de la barra inferior
+  // ② cambiar pestaña de la barra inferior
   const tabBtn = e.target.closest('[data-tab]');
   if (tabBtn) {
     state.tab = tabBtn.dataset.tab;

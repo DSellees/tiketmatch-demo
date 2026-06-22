@@ -6,9 +6,6 @@
 const AC = '#FF5722';
 const AS = 'rgba(255,87,34,0.1)';
 
-// categorías del filtro
-const CATS = ['Discover', 'Concert', 'Sport', 'Football', 'Festival', 'Experience'];
-
 // fondo (patrón) por categoría — sustituye a la imagen real del evento
 const CATBG = {
   concert:    'repeating-linear-gradient(125deg,#2b2e3b 0 16px,#262936 16px 32px)',

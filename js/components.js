@@ -21,16 +21,6 @@ function dec(e) {
   };
 }
 
-// Fila de pills de categoría (scroll horizontal)
-function catPills() {
-  return `<div data-scroll style="display:flex;gap:9px;overflow-x:auto;padding:16px 20px 4px;">${
-    CATS.map(name => {
-      const on = name === state.cat;
-      return `<button data-catbtn="${name}" style="flex:0 0 auto;border:none;font-family:'Plus Jakarta Sans';font-weight:700;font-size:13px;padding:9px 16px;border-radius:999px;background:${on ? AC : '#F1F1F4'};color:${on ? '#fff' : '#374151'};box-shadow:${on ? '0 8px 18px rgba(255,87,34,0.35)' : 'none'};">${name}</button>`;
-    }).join('')
-  }</div>`;
-}
-
 // Barra de navegación inferior con badge de favoritos
 function bottomNav() {
   const t = state.tab;
