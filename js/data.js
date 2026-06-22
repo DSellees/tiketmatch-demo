@@ -28,24 +28,27 @@ const STATUS = {
   soon:  { text: 'Próximamente',     bg: 'rgba(17,24,39,.62)', color: '#fff', dot: '#9CA3AF' },
 };
 
+// referencia temporal para filtros de fecha (demo: 22 jun 2026)
+const TODAY = new Date('2026-06-22T12:00:00');
+
 // catálogo de eventos
 const EVENTS = [
-  { id:'e1',  title:'Lúa Nova · Gira 2026',       venue:'Palau Sant Jordi',   area:'Montjuïc',     dateShort:'SÁB 14 JUN', time:'21:00', price:'€45',  status:'avail', cat:'concert' },
-  { id:'e2',  title:'Electronit Festival',         venue:'Parc del Fòrum',     area:'Sant Martí',   dateShort:'VIE 27 JUN', time:'18:00', price:'€62',  status:'last',  cat:'festival' },
-  { id:'e3',  title:'Derbi Mediterráneo',          venue:'RCDE Stadium',       area:'Cornellà',     dateShort:'DOM 22 JUN', time:'16:15', price:'€38',  status:'avail', cat:'football' },
-  { id:'e4',  title:'Indie Sessions Vol. 4',       venue:'Razzmatazz',         area:'Poblenou',     dateShort:'JUE 19 JUN', time:'20:30', price:'€24',  status:'last',  cat:'concert' },
-  { id:'e5',  title:'Flamenco Roots Live',         venue:'Teatre Grec',        area:'Montjuïc',     dateShort:'MIÉ 02 JUL', time:'22:00', price:'€30',  status:'avail', cat:'experience' },
-  { id:'e6',  title:'Champions Night · Octavos',   venue:'Estadi Olímpic',     area:'Montjuïc',     dateShort:'MAR 24 JUN', time:'21:00', price:'€85',  status:'soon',  cat:'football' },
-  { id:'e7',  title:'Litoral Sound 2026',          venue:'Parc del Fòrum',     area:'Sant Martí',   dateShort:'SÁB 05 JUL', time:'17:00', price:'€120', status:'last',  cat:'festival' },
-  { id:'e8',  title:'Cena en las Alturas',         venue:'Rooftop Eixample',   area:'Eixample',     dateShort:'VIE 13 JUN', time:'20:00', price:'€55',  status:'avail', cat:'experience' },
-  { id:'e9',  title:'Jazz al Fòrum',               venue:"L'Auditori",         area:'El Clot',      dateShort:'JUE 26 JUN', time:'20:00', price:'€28',  status:'avail', cat:'concert' },
-  { id:'e10', title:'Eurolliga · Jornada 21',      venue:'Palau Municipal',    area:'Les Corts',    dateShort:'VIE 20 JUN', time:'20:45', price:'€19',  status:'avail', cat:'sport' },
-  { id:'e11', title:'Vibra Festival',              venue:'Poble Espanyol',     area:'Montjuïc',     dateShort:'SÁB 28 JUN', time:'19:00', price:'€49',  status:'soon',  cat:'festival' },
-  { id:'e12', title:'Tour Gastronòmic del Born',   venue:'El Born',            area:'Ciutat Vella', dateShort:'DOM 15 JUN', time:'12:00', price:'€35',  status:'avail', cat:'experience' },
-  { id:'e13', title:'Atardecer en Montjuïc',       venue:'Teleférico',         area:'Montjuïc',     dateShort:'SÁB 21 JUN', time:'19:30', price:'€18',  status:'last',  cat:'experience' },
-  { id:'e14', title:'Noche Electrónica',           venue:'Sala Apolo',         area:'Poble-sec',    dateShort:'SÁB 14 JUN', time:'23:59', price:'€22',  status:'avail', cat:'concert' },
-  { id:'e15', title:'Open Internacional Tenis',    venue:'RC Tenis BCN',       area:'Pedralbes',    dateShort:'LUN 23 JUN', time:'11:00', price:'€40',  status:'soon',  cat:'sport' },
-  { id:'e16', title:'Cata de Vinos Penedès',       venue:'Wine Loft',          area:'Gràcia',       dateShort:'JUE 12 JUN', time:'19:00', price:'€42',  status:'avail', cat:'experience' },
+  { id:'e1',  title:'Lúa Nova · Gira 2026',       venue:'Palau Sant Jordi',   area:'Montjuïc',     dateShort:'SÁB 14 JUN', date:'2026-06-14', time:'21:00', price:'€45',  priceNum:45,  status:'avail', cat:'concert' },
+  { id:'e2',  title:'Electronit Festival',         venue:'Parc del Fòrum',     area:'Sant Martí',   dateShort:'VIE 27 JUN', date:'2026-06-27', time:'18:00', price:'€62',  priceNum:62,  status:'last',  cat:'festival' },
+  { id:'e3',  title:'Derbi Mediterráneo',          venue:'RCDE Stadium',       area:'Cornellà',     dateShort:'DOM 22 JUN', date:'2026-06-22', time:'16:15', price:'€38',  priceNum:38,  status:'avail', cat:'football' },
+  { id:'e4',  title:'Indie Sessions Vol. 4',       venue:'Razzmatazz',         area:'Poblenou',     dateShort:'JUE 19 JUN', date:'2026-06-19', time:'20:30', price:'€24',  priceNum:24,  status:'last',  cat:'concert' },
+  { id:'e5',  title:'Flamenco Roots Live',         venue:'Teatre Grec',        area:'Montjuïc',     dateShort:'MIÉ 02 JUL', date:'2026-07-02', time:'22:00', price:'€30',  priceNum:30,  status:'avail', cat:'experience' },
+  { id:'e6',  title:'Champions Night · Octavos',   venue:'Estadi Olímpic',     area:'Montjuïc',     dateShort:'MAR 24 JUN', date:'2026-06-24', time:'21:00', price:'€85',  priceNum:85,  status:'soon',  cat:'football' },
+  { id:'e7',  title:'Litoral Sound 2026',          venue:'Parc del Fòrum',     area:'Sant Martí',   dateShort:'SÁB 05 JUL', date:'2026-07-05', time:'17:00', price:'€120', priceNum:120, status:'last',  cat:'festival' },
+  { id:'e8',  title:'Cena en las Alturas',         venue:'Rooftop Eixample',   area:'Eixample',     dateShort:'VIE 13 JUN', date:'2026-06-13', time:'20:00', price:'€55',  priceNum:55,  status:'avail', cat:'experience' },
+  { id:'e9',  title:'Jazz al Fòrum',               venue:"L'Auditori",         area:'El Clot',      dateShort:'JUE 26 JUN', date:'2026-06-26', time:'20:00', price:'€28',  priceNum:28,  status:'avail', cat:'concert' },
+  { id:'e10', title:'Eurolliga · Jornada 21',      venue:'Palau Municipal',    area:'Les Corts',    dateShort:'VIE 20 JUN', date:'2026-06-20', time:'20:45', price:'€19',  priceNum:19,  status:'avail', cat:'sport' },
+  { id:'e11', title:'Vibra Festival',              venue:'Poble Espanyol',     area:'Montjuïc',     dateShort:'SÁB 28 JUN', date:'2026-06-28', time:'19:00', price:'€49',  priceNum:49,  status:'soon',  cat:'festival' },
+  { id:'e12', title:'Tour Gastronòmic del Born',   venue:'El Born',            area:'Ciutat Vella', dateShort:'DOM 15 JUN', date:'2026-06-15', time:'12:00', price:'€35',  priceNum:35,  status:'avail', cat:'experience' },
+  { id:'e13', title:'Atardecer en Montjuïc',       venue:'Teleférico',         area:'Montjuïc',     dateShort:'SÁB 21 JUN', date:'2026-06-21', time:'19:30', price:'€18',  priceNum:18,  status:'last',  cat:'experience' },
+  { id:'e14', title:'Noche Electrónica',           venue:'Sala Apolo',         area:'Poble-sec',    dateShort:'SÁB 14 JUN', date:'2026-06-14', time:'23:59', price:'€22',  priceNum:22,  status:'avail', cat:'concert' },
+  { id:'e15', title:'Open Internacional Tenis',    venue:'RC Tenis BCN',       area:'Pedralbes',    dateShort:'LUN 23 JUN', date:'2026-06-23', time:'11:00', price:'€40',  priceNum:40,  status:'soon',  cat:'sport' },
+  { id:'e16', title:'Cata de Vinos Penedès',       venue:'Wine Loft',          area:'Gràcia',       dateShort:'JUE 12 JUN', date:'2026-06-12', time:'19:00', price:'€42',  priceNum:42,  status:'avail', cat:'experience' },
 ];
 
 // índice por id para acceso rápido
@@ -63,3 +66,62 @@ const TREND = [
   { id:'e6',  rank:4, dir:'up' },
   { id:'e11', rank:5, dir:'same' },
 ];
+
+// opciones del panel de filtros
+const FILTER_SECTIONS = [
+  {
+    key: 'cat', title: 'Categorías', multi: true,
+    options: [
+      { id: 'concert',    label: 'Concierto' },
+      { id: 'sport',      label: 'Deporte' },
+      { id: 'football',   label: 'Fútbol' },
+      { id: 'festival',   label: 'Festival' },
+      { id: 'experience', label: 'Experiencia' },
+    ],
+  },
+  {
+    key: 'date', title: 'Fecha', multi: false,
+    options: [
+      { id: 'any',     label: 'Cualquiera' },
+      { id: 'today',   label: 'Hoy' },
+      { id: 'weekend', label: 'Este finde' },
+      { id: 'week',    label: 'Esta semana' },
+      { id: 'month',   label: 'Este mes' },
+    ],
+  },
+  {
+    key: 'price', title: 'Precio', multi: false,
+    options: [
+      { id: 'any',    label: 'Cualquiera' },
+      { id: 'lt25',   label: 'Menos de €25' },
+      { id: '25-50',  label: '€25–50' },
+      { id: '50-100', label: '€50–100' },
+      { id: 'gt100',  label: 'Más de €100' },
+    ],
+  },
+  {
+    key: 'status', title: 'Disponibilidad', multi: true,
+    options: [
+      { id: 'avail', label: 'Disponible' },
+      { id: 'last',  label: 'Últimas entradas' },
+      { id: 'soon',  label: 'Próximamente' },
+    ],
+  },
+  {
+    key: 'sort', title: 'Ordenar por', multi: false,
+    options: [
+      { id: 'relevance', label: 'Relevancia' },
+      { id: 'price',     label: 'Menor precio' },
+      { id: 'date',      label: 'Próximas fechas' },
+      { id: 'near',      label: 'Más cercanos' },
+    ],
+  },
+];
+
+function defaultFilters() {
+  return { cat: new Set(), date: 'any', price: 'any', status: new Set(), sort: 'relevance' };
+}
+
+function cloneFilters(f) {
+  return { cat: new Set(f.cat), date: f.date, price: f.price, status: new Set(f.status), sort: f.sort };
+}

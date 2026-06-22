@@ -44,21 +44,119 @@ button{ font-family:inherit; cursor:pointer; }
 
 #content{
   padding-top:max(18px, env(safe-area-inset-top));
-  padding-bottom:calc(104px + env(safe-area-inset-bottom));
+  padding-bottom:calc(96px + env(safe-area-inset-bottom));
 }
 
-/* barra de navegación inferior, fija a todo el ancho */
+/* barra de navegación flotante */
 #nav{
   position:fixed;
   left:0; right:0; bottom:0;
-  width:100%;
-  height:calc(84px + env(safe-area-inset-bottom));
-  padding:11px 10px env(safe-area-inset-bottom);
-  background:rgba(255,255,255,.93);
-  backdrop-filter:blur(14px);
-  -webkit-backdrop-filter:blur(14px);
-  border-top:1px solid var(--line);
-  display:flex;
-  align-items:flex-start;
   z-index:25;
+  padding:0 20px calc(16px + env(safe-area-inset-bottom));
+  pointer-events:none;
+}
+
+#nav-pill{
+  pointer-events:auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:4px;
+  max-width:420px;
+  margin:0 auto;
+  padding:10px 14px;
+  background:#fff;
+  border-radius:999px;
+  box-shadow:0 10px 40px rgba(17,24,39,.12), 0 2px 8px rgba(17,24,39,.06);
+  border:1px solid rgba(239,239,241,.9);
+}
+
+.nav-item{
+  flex:1;
+  border:none;
+  background:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  color:#9CA3AF;
+  -webkit-tap-highlight-color:transparent;
+}
+
+.nav-icon{
+  position:relative;
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#6B7280;
+  transform:scale(1);
+  transition:background .25s ease, color .25s ease, box-shadow .25s ease, transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+
+.nav-icon svg{
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+
+.nav-item:active .nav-icon{ transform:scale(.9); }
+
+.nav-item.is-active .nav-icon{
+  background:var(--accent);
+  color:#fff;
+  box-shadow:0 6px 18px rgba(255,87,34,.32);
+  animation:navPop .4s cubic-bezier(.34,1.56,.64,1);
+}
+
+.nav-item.is-active .nav-icon svg{
+  animation:navIconPop .4s cubic-bezier(.34,1.56,.64,1);
+}
+
+@keyframes navPop{
+  0%{ transform:scale(.6); }
+  60%{ transform:scale(1.12); }
+  100%{ transform:scale(1); }
+}
+
+@keyframes navIconPop{
+  0%{ transform:scale(.5) translateY(2px); opacity:.4; }
+  60%{ transform:scale(1.18) translateY(-1px); opacity:1; }
+  100%{ transform:scale(1) translateY(0); }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .nav-icon,
+  .nav-icon svg{ transition:none; }
+  .nav-item.is-active .nav-icon,
+  .nav-item.is-active .nav-icon svg{ animation:none; }
+}
+
+.nav-badge{
+  position:absolute;
+  top:0;
+  right:0;
+  min-width:16px;
+  height:16px;
+  padding:0 4px;
+  border-radius:999px;
+  background:var(--accent);
+  color:#fff;
+  font-size:9px;
+  font-weight:800;
+  align-items:center;
+  justify-content:center;
+  border:2px solid #fff;
+  line-height:1;
+}
+
+/* panel de filtros — pantalla completa sobre la app */
+#filters{
+  position:fixed;
+  inset:0;
+  z-index:40;
+}
+
+#filters input[type="search"]::-webkit-search-cancel-button{
+  -webkit-appearance:none;
 }
