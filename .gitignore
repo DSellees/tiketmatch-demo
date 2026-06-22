@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Configuración local del editor/herramientas (no es parte de la web)
+.claude/settings.local.json
+
+# Logs / temporales
+*.log

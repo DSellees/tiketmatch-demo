@@ -1,0 +1,64 @@
+/* ============================================================================
+   Catchtime · estilos globales / layout
+   Los estilos a nivel de componente (tarjetas, pills, nav) viven inline en los
+   templates de js/components.js para mantener la fidelidad 1:1 con el diseño.
+   Aquí solo va el reset y la estructura de la página.
+   ========================================================================== */
+
+*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+
+html{ -webkit-text-size-adjust:100%; }
+
+body{
+  min-height:100vh;
+  background:var(--bg-app);
+  font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  overflow-x:hidden;
+}
+
+button{ font-family:inherit; cursor:pointer; }
+
+/* carruseles horizontales sin scrollbar visible */
+[data-scroll]{ scrollbar-width:none; -ms-overflow-style:none; }
+[data-scroll]::-webkit-scrollbar{ display:none; }
+
+/* paleta / tokens */
+:root{
+  --accent:#FF5722;
+  --accent-soft:rgba(255,87,34,.10);
+  --bg-app:#F9FAFB;
+  --ink:#111827;
+  --muted:#9CA3AF;
+  --line:#EFEFF1;
+}
+
+/* contenedor de la app — full-bleed, ocupa toda la pantalla */
+#app{
+  position:relative;
+  width:100%;
+  min-height:100vh;
+  min-height:100dvh;
+  background:var(--bg-app);
+  overflow-x:hidden;
+}
+
+#content{
+  padding-top:max(18px, env(safe-area-inset-top));
+  padding-bottom:calc(104px + env(safe-area-inset-bottom));
+}
+
+/* barra de navegación inferior, fija a todo el ancho */
+#nav{
+  position:fixed;
+  left:0; right:0; bottom:0;
+  width:100%;
+  height:calc(84px + env(safe-area-inset-bottom));
+  padding:11px 10px env(safe-area-inset-bottom);
+  background:rgba(255,255,255,.93);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border-top:1px solid var(--line);
+  display:flex;
+  align-items:flex-start;
+  z-index:25;
+}
