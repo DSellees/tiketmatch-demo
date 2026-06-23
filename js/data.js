@@ -67,6 +67,21 @@ const TREND = [
   { id:'e11', rank:5, dir:'same' },
 ];
 
+// ubicación: zonas cercanas (demo) y ciudades populares para el selector
+const NEARBY_ZONES = [
+  { name: 'Ciutat Vella',  meta: 'Barcelona · 0,9 km' },
+  { name: 'Eixample',      meta: 'Barcelona · 1,4 km' },
+  { name: 'Montjuïc',      meta: 'Barcelona · 2,1 km' },
+  { name: 'Gràcia',        meta: 'Barcelona · 3,0 km' },
+  { name: 'Poblenou',      meta: 'Barcelona · 4,2 km' },
+  { name: 'Sant Martí',    meta: 'Barcelona · 5,1 km' },
+];
+
+const POPULAR_CITIES = [
+  'Barcelona', 'Madrid', 'València', 'Sevilla',
+  'Bilbao', 'Málaga', 'Zaragoza', 'Granada', 'Palma',
+];
+
 // opciones del panel de filtros
 const FILTER_SECTIONS = [
   {

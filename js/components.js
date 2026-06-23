@@ -28,14 +28,16 @@ function navItem(id, label, paths, hasBadge = false) {
   const badge = hasBadge
     ? `<span data-badge class="nav-badge" style="display:${cnt > 0 ? 'flex' : 'none'};">${cnt}</span>`
     : '';
-  const svg = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  const svg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
   return `<button type="button" data-tab="${id}" aria-label="${label}" class="nav-item${active ? ' is-active' : ''}">
     <span class="nav-icon">${svg}${badge}</span>
   </button>`;
 }
 
 function bottomNav() {
-  const mapIcon = '<path d="M3 13 9 11l6 2 6-2v7l-6 2-6-2-6 2Z"></path><path d="M9 11v7"></path><path d="M15 13v7"></path><path d="M17.5 13c-2-2.5-3.5-4.4-3.5-6.5a3.5 3.5 0 0 1 7 0c0 2.1-1.5 4-3.5 6.5Z"></path><circle cx="17.5" cy="6.5" r="1.5"></circle>';
+  // Icono de mapa con pin (Lucide map-pinned). Se entrega como <path> sueltos para
+  // usar el mismo envoltorio (stroke currentColor, 2px) que el resto de la barra.
+  const mapIcon = '<path d="M18 8c0 3.613-3.869 7.429-5.393 8.795a1 1 0 0 1-1.214 0C9.87 15.429 6 11.613 6 8a6 6 0 0 1 12 0"></path><circle cx="12" cy="8" r="2"></circle><path d="M8.714 14h-3.71a1 1 0 0 0-.948.683l-2.004 6A1 1 0 0 0 3 22h18a1 1 0 0 0 .949-1.316l-2-6a1 1 0 0 0-.95-.684h-3.712"></path>';
   return `<nav id="nav">
     <div id="nav-pill">
       ${navItem('home', 'Inicio', '<path d="M3 10.5 12 3l9 7.5"></path><path d="M5.5 9.5V20a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.5"></path>')}
@@ -45,6 +47,42 @@ function bottomNav() {
       ${navItem('profile', 'Perfil', '<circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>')}
     </div>
   </nav>`;
+}
+
+// Pantalla de mapa (vista grande + buscador superior)
+function mapTabView() {
+  return `<section id="map-screen" aria-label="Mapa de eventos">
+    <div id="map-canvas" aria-label="Mapa"></div>
+
+    <div id="map-overlay-top">
+      <div id="map-location-pill">
+        ${SVG.pin('#111827', 16)}
+        <span>${state.location}</span>
+      </div>
+
+      <form id="map-search-form" data-map-search-form>
+        ${SVG.search('#9CA3AF', 18)}
+        <input
+          type="search"
+          data-map-search-input
+          enterkeyhint="search"
+          placeholder="Buscar lugar o dirección..."
+          aria-label="Buscar en el mapa"
+        >
+        <button type="submit" data-map-search-submit aria-label="Buscar">
+          ${SVG.search('#fff', 16)}
+        </button>
+      </form>
+
+      <div id="map-quick-actions">
+        <button type="button" class="map-chip" data-map-quick="Sagrada Familia">Sagrada Familia</button>
+        <button type="button" class="map-chip" data-map-quick="Camp Nou">Camp Nou</button>
+        <button type="button" class="map-chip" data-map-current>${SVG.locate(AC, 14)}Mi ubicación</button>
+      </div>
+    </div>
+
+    <div id="map-status" aria-live="polite"></div>
+  </section>`;
 }
 
 // Tarjeta estándar (imagen arriba, ficha debajo)
@@ -119,6 +157,67 @@ function filterPanel(filters) {
       <div style="flex:1;overflow-y:auto;padding:20px 20px 100px;">${sections}</div>
       <div style="position:absolute;left:0;right:0;bottom:0;padding:16px 20px calc(16px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(255,255,255,0) 0%,#fff 24%);">
         <button type="button" data-filter-apply style="width:100%;height:54px;border:none;border-radius:999px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;box-shadow:0 8px 24px rgba(255,87,34,.28);">Aplicar filtros</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Pantalla de selección de ubicación (ciudad / zona)
+function locationPanel(query) {
+  const q = (query || '').trim().toLowerCase();
+  const zones  = NEARBY_ZONES.filter(z => (z.name + ' ' + z.meta).toLowerCase().includes(q));
+  const cities = POPULAR_CITIES.filter(c => c.toLowerCase().includes(q));
+
+  const row = (value, title, meta, icon) => {
+    const active = value === state.location;
+    return `<button type="button" data-location-pick="${value.replace(/"/g, '&quot;')}" style="display:flex;align-items:center;gap:13px;width:100%;padding:13px 2px;border:none;border-bottom:1px solid #F3F4F6;background:none;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+      <span style="width:40px;height:40px;border-radius:13px;background:${active ? AS : '#F4F4F5'};display:flex;align-items:center;justify-content:center;flex:none;">${icon(active ? AC : '#9CA3AF')}</span>
+      <span style="flex:1;min-width:0;">
+        <span style="display:block;font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#111827;letter-spacing:-.01em;">${title}</span>
+        ${meta ? `<span style="display:block;color:#9CA3AF;font-size:12.5px;font-weight:500;margin-top:1px;">${meta}</span>` : ''}
+      </span>
+      ${active ? SVG.check(AC) : ''}
+    </button>`;
+  };
+
+  const section = (title, html) => html
+    ? `<div style="margin-top:24px;">
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;">${title}</div>
+        ${html}
+      </div>` : '';
+
+  const zonesHtml  = zones.map(z => row(z.name, z.name, z.meta, c => SVG.mapPin(c, 18))).join('');
+  const citiesHtml = cities.map(c => row(c, c, null, col => SVG.pin(col, 18))).join('');
+
+  const empty = (!zones.length && !cities.length)
+    ? `<div style="padding:54px 20px;text-align:center;">
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:18px;color:#111827;">Sin resultados</div>
+        <div style="color:#9CA3AF;font-size:14px;margin-top:8px;line-height:1.5;">No encontramos «${query.trim()}». Prueba con otra ciudad o zona.</div>
+      </div>`
+    : '';
+
+  return `<div id="location" role="dialog" aria-modal="true" aria-label="Elegir ubicación">
+    <div style="position:absolute;inset:0;background:#fff;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;border-bottom:1px solid #F3F4F6;">
+        <button type="button" data-location-close style="width:40px;height:40px;border-radius:50%;border:1px solid #EFEFF1;background:#fff;display:flex;align-items:center;justify-content:center;">${SVG.close('#111827')}</button>
+        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:17px;color:#111827;">Ubicación</div>
+        <span style="width:40px;"></span>
+      </div>
+
+      <div style="padding:14px 20px 0;">
+        <div style="display:flex;align-items:center;gap:10px;height:50px;background:#F4F4F5;border-radius:16px;padding:0 14px;">
+          ${SVG.search('#9CA3AF')}
+          <input data-location-search type="search" enterkeyhint="search" placeholder="Busca ciudad, zona o barrio…" value="${(query || '').replace(/"/g, '&quot;')}" style="flex:1;border:none;outline:none;background:transparent;color:#111827;font-size:14.5px;font-weight:500;font-family:inherit;">
+        </div>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;padding:0 20px 40px;">
+        <button type="button" data-location-current ${state.locationLoading ? 'disabled' : ''} style="display:flex;align-items:center;gap:13px;width:100%;margin-top:16px;padding:13px 14px;border:none;border-radius:16px;background:${AS};text-align:left;${state.locationLoading ? 'opacity:.7;' : ''}">
+          <span style="width:40px;height:40px;border-radius:13px;background:#fff;display:flex;align-items:center;justify-content:center;flex:none;">${SVG.locate(AC)}</span>
+          <span style="flex:1;font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:${AC};">${state.locationLoading ? 'Buscando tu ubicación…' : 'Usar mi ubicación actual'}</span>
+        </button>
+        ${state.locationError ? `<div style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;padding:11px 13px;border-radius:13px;background:#FEF2F2;color:#B91C1C;font-size:12.5px;font-weight:600;line-height:1.4;">${state.locationError}</div>` : ''}
+        ${empty || (section('Cerca de ti', zonesHtml) + section('Ciudades populares', citiesHtml))}
       </div>
     </div>
   </div>`;
