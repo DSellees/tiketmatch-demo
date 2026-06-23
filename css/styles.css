@@ -157,7 +157,7 @@ button{ font-family:inherit; cursor:pointer; }
   width:100%;
   min-height:100vh;
   min-height:100dvh;
-  background:#E5E7EB;
+  background:#F3F4F6;
   overflow:hidden;
 }
 
@@ -167,46 +167,34 @@ button{ font-family:inherit; cursor:pointer; }
 }
 
 #map-overlay-top{
-  position:relative;
-  z-index:4;
+  position:absolute;
+  top:0; left:0; right:0;
+  z-index:6;
   display:flex;
   flex-direction:column;
   gap:10px;
-  padding:max(14px, env(safe-area-inset-top)) 16px 0;
+  padding:max(12px, env(safe-area-inset-top)) 14px 26px;
   pointer-events:none;
+  /* la barra superior se desvanece en degradado en lugar de cortar con sombra */
+  background:linear-gradient(180deg,
+    rgba(255,255,255,.97) 0%,
+    rgba(255,255,255,.88) 46%,
+    rgba(255,255,255,0) 100%);
 }
 
 #map-overlay-top > *{
   pointer-events:auto;
 }
 
-#map-location-pill{
-  align-self:flex-start;
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  height:34px;
-  padding:0 13px;
-  border-radius:999px;
-  background:rgba(255,255,255,.94);
-  border:1px solid rgba(239,239,241,.95);
-  box-shadow:0 2px 10px rgba(17,24,39,.08);
-  color:#111827;
-  font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:13px;
-  font-weight:700;
-}
-
 #map-search-form{
   display:flex;
   align-items:center;
   gap:10px;
-  height:52px;
-  padding:0 6px 0 14px;
+  height:50px;
+  padding:0 16px;
   border-radius:16px;
-  border:1px solid rgba(239,239,241,.95);
-  background:rgba(255,255,255,.96);
-  box-shadow:0 4px 18px rgba(17,24,39,.10);
+  border:1px solid #E6E7EB;
+  background:#FFFFFF;
 }
 
 #map-search-form input{
@@ -220,74 +208,386 @@ button{ font-family:inherit; cursor:pointer; }
   font-weight:500;
 }
 
-#map-search-form button{
-  width:38px;
-  height:38px;
-  border:none;
-  border-radius:11px;
-  background:var(--accent);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
+#map-search-form input::-webkit-search-cancel-button{ -webkit-appearance:none; }
 
-#map-quick-actions{
+/* fila de chips de categoría sobre el mapa */
+#map-chips{
   display:flex;
   align-items:center;
   gap:8px;
   overflow-x:auto;
-  scrollbar-width:none;
-}
-
-#map-quick-actions::-webkit-scrollbar{
-  display:none;
+  padding:2px 0 4px;
+  -webkit-overflow-scrolling:touch;
 }
 
 .map-chip{
-  flex:none;
-  border:none;
-  border-radius:999px;
-  background:rgba(255,255,255,.92);
-  border:1px solid rgba(239,239,241,.95);
-  color:#1F2937;
-  font-size:12.5px;
+  flex:0 0 auto;
+  border:1px solid #E6E7EB;
+  background:#fff;
+  color:#374151;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:13px;
   font-weight:700;
-  height:34px;
-  padding:0 12px;
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  box-shadow:0 2px 8px rgba(17,24,39,.07);
+  padding:8px 15px;
+  border-radius:999px;
+  white-space:nowrap;
+  transition:background .18s ease, color .18s ease, border-color .18s ease;
 }
 
-#map-status{
-  position:fixed;
-  left:16px;
-  right:16px;
-  bottom:calc(76px + env(safe-area-inset-bottom));
-  z-index:4;
-  display:none;
-  align-items:center;
-  justify-content:center;
-  min-height:38px;
-  border-radius:12px;
-  background:rgba(17,24,39,.82);
+.map-chip.is-active{
+  background:var(--accent);
   color:#fff;
+  border-color:var(--accent);
+}
+
+/* mensaje de estado del mapa (buscador / geolocalización) */
+#map-status{
+  position:absolute;
+  left:50%;
+  top:calc(max(12px, env(safe-area-inset-top)) + 128px);
+  transform:translateX(-50%) translateY(-6px);
+  z-index:7;
+  max-width:calc(100% - 36px);
+  padding:9px 15px;
+  border-radius:999px;
+  background:#111827;
+  color:#fff;
+  font-family:'Plus Jakarta Sans',sans-serif;
   font-size:12.5px;
   font-weight:600;
-  padding:8px 12px;
   text-align:center;
+  box-shadow:0 8px 24px rgba(17,24,39,.22);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s ease, transform .2s ease;
 }
 
 #map-status.show{
+  opacity:1;
+  transform:translateX(-50%) translateY(0);
+}
+
+/* ── Marcador de evento: punto grande + mini-card anclada ───────────────────── */
+.ev-marker{
+  position:relative;
+  width:20px;
+  height:20px;
+}
+
+.ev-dot{
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:20px;
+  height:20px;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  background:var(--accent);
+  border:2.5px solid #fff;
+  box-shadow:0 2px 7px rgba(17,24,39,.30), 0 0 0 1px rgba(17,24,39,.04);
+  cursor:pointer;
+  transition:transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .18s ease;
+}
+
+/* zona de toque ampliada para el punto */
+.ev-dot::before{
+  content:"";
+  position:absolute;
+  inset:-10px;
+  border-radius:50%;
+}
+
+.ev-marker.show-card .ev-dot{ transform:translate(-50%,-50%) scale(.62); }
+
+.ev-marker.is-selected .ev-dot{
+  transform:translate(-50%,-50%) scale(1.1);
+  box-shadow:0 3px 10px rgba(255,87,34,.4), 0 0 0 6px var(--accent-soft);
+}
+
+.ev-card{
+  position:absolute;
+  left:50%;
+  bottom:calc(100% + 7px);
+  transform:translateX(calc(-50% + var(--shift, 0px))) scale(.82);
+  transform-origin:bottom center;
   display:flex;
+  align-items:center;
+  gap:9px;
+  max-width:200px;
+  padding:5px 11px 5px 5px;
+  background:#fff;
+  border:1px solid #EFEFF1;
+  border-radius:14px;
+  box-shadow:0 8px 22px rgba(17,24,39,.16), 0 1px 3px rgba(17,24,39,.08);
+  cursor:pointer;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .16s ease, transform .16s cubic-bezier(.34,1.56,.64,1);
+}
+
+/* triángulo (tail) que apunta al punto (se reposiciona si la card se desplaza) */
+.ev-card::after{
+  content:"";
+  position:absolute;
+  left:calc(50% - var(--shift, 0px));
+  bottom:-5px;
+  width:11px;
+  height:11px;
+  background:#fff;
+  border-right:1px solid #EFEFF1;
+  border-bottom:1px solid #EFEFF1;
+  transform:translateX(-50%) rotate(45deg);
+}
+
+.ev-marker.show-card .ev-card{
+  opacity:1;
+  pointer-events:auto;
+  transform:translateX(calc(-50% + var(--shift, 0px))) scale(1);
+}
+
+.ev-marker.is-selected .ev-card{
+  border-color:var(--accent);
+  box-shadow:0 12px 28px rgba(255,87,34,.28), 0 2px 6px rgba(17,24,39,.12);
+}
+.ev-marker.is-selected .ev-card::after{ border-color:var(--accent); }
+
+.ev-thumb{
+  position:relative;
+  width:34px;
+  height:34px;
+  flex:none;
+  border-radius:10px;
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.ev-thumb::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:radial-gradient(120% 90% at 50% 0,rgba(255,255,255,.14),transparent 60%),linear-gradient(180deg,rgba(17,24,39,0),rgba(17,24,39,.4));
+}
+.ev-thumb-ic{ position:relative; z-index:1; display:flex; opacity:.92; }
+
+.ev-meta{ display:flex; flex-direction:column; min-width:0; }
+
+.ev-t{
+  font-family:'Sora',sans-serif;
+  font-weight:700;
+  font-size:12.5px;
+  line-height:1.15;
+  letter-spacing:-.01em;
+  color:#111827;
+  max-width:138px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.ev-s{
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-weight:600;
+  font-size:10.5px;
+  color:#9CA3AF;
+  margin-top:2px;
+  white-space:nowrap;
+}
+.ev-marker.is-selected .ev-s{ color:var(--accent); }
+
+/* ── Carrusel de detalle (cards blancas, scroll lateral) ────────────────────── */
+#map-preview{
+  position:absolute;
+  left:0; right:0;
+  bottom:calc(86px + env(safe-area-inset-bottom));
+  z-index:8;
+  pointer-events:none;
+}
+
+.map-preview-track{
+  display:flex;
+  gap:8px;
+  /* padding lateral igual a ambos lados → márgenes iguales con snap centrado */
+  padding:22px 34px 10px;
+  overflow-x:auto;
+  scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+  pointer-events:auto;
+}
+.map-preview-track::-webkit-scrollbar{ display:none; }
+
+.map-preview-card{
+  position:relative;
+  flex:0 0 auto;
+  width:calc(100vw - 68px);     /* algo más estrecha; márgenes iguales izq/dcha */
+  scroll-snap-align:center;
+  background:#fff;
+  border:1px solid #EFEFF1;
+  border-radius:22px;
+  overflow:hidden;
+  /* sombra suave para no oscurecer el mapa detrás de las cards */
+  box-shadow:0 8px 22px rgba(17,24,39,.10);
+  opacity:1;
+  /* todas las cards tienen el mismo tamaño → scroll más fluido */
+  transform:translateY(14px);
+  transition:transform .24s ease, opacity .24s ease;
+}
+#map-preview.show .map-preview-card{ transform:translateY(0); }
+/* la card que no está en foco se atenúa un poco */
+.map-preview-card:not(.is-active){ opacity:.8; }
+
+/* Hero con gradiente de categoría */
+.map-preview-hero{
+  position:relative;
+  width:100%;
+  height:140px;
+  overflow:hidden;
+}
+.map-preview-hero-shine{
+  position:absolute;
+  inset:0;
+  background:radial-gradient(130% 90% at 50% -15%, rgba(255,255,255,.22), transparent 58%);
+}
+.map-preview-hero-grad{
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg, rgba(17,24,39,0) 35%, rgba(17,24,39,.42) 100%);
+}
+.map-preview-hero-icon{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+}
+
+/* Precio en pill sobre esquina inferior-izquierda del hero */
+.map-preview-hero-price{
+  position:absolute;
+  bottom:10px;
+  left:10px;
+  background:#fff;
+  color:#111827;
+  font-family:'Sora',sans-serif;
+  font-weight:800;
+  font-size:13px;
+  padding:5px 11px;
+  border-radius:999px;
+  box-shadow:0 2px 8px rgba(17,24,39,.18);
+}
+
+.map-preview-status{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:10.5px;
+  font-weight:700;
+  padding:4px 9px;
+  border-radius:999px;
+}
+.map-preview-status span{ width:6px; height:6px; border-radius:50%; }
+
+/* Badge de estado sobre esquina inferior-derecha del hero */
+.map-preview-hero-status{
+  position:absolute;
+  bottom:10px;
+  right:10px;
+  backdrop-filter:blur(8px);
+}
+
+/* Favorito (top-left) y cerrar (top-right) sobre el hero */
+.map-preview-fav,
+.map-preview-close{
+  position:absolute;
+  top:10px;
+  z-index:2;
+  width:32px;
+  height:32px;
+  border:none;
+  border-radius:50%;
+  background:rgba(17,24,39,.42);
+  backdrop-filter:blur(8px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+}
+.map-preview-fav{ left:10px; }
+.map-preview-close{ right:10px; }
+
+/* Cuerpo (texto oscuro sobre blanco) */
+.map-preview-body{
+  padding:12px 14px 14px;
+  display:flex;
+  flex-direction:column;
+}
+
+.map-preview-title{
+  font-family:'Sora',sans-serif;
+  font-weight:700;
+  font-size:16.5px;
+  line-height:1.2;
+  letter-spacing:-.02em;
+  color:#111827;
+  margin-bottom:8px;
+}
+
+.map-preview-line{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin-top:5px;
+  color:#6B7280;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:12px;
+  font-weight:500;
+}
+.map-preview-line span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.map-preview-date{ color:var(--accent); margin-top:0; }
+
+/* dos botones: "Ver detalle" (claro) + "Comprar" (naranja) */
+.map-preview-actions{
+  display:flex;
+  gap:9px;
+  margin-top:13px;
+}
+.map-preview-btn{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  border:none;
+  border-radius:14px;
+  font-family:'Sora',sans-serif;
+  font-weight:700;
+  font-size:14px;
+  padding:13px 14px;
+}
+.map-preview-ghost{
+  background:#F4F5F7;
+  color:#374151;
+  border:1px solid #ECECEF;
+}
+.map-preview-cta{
+  background:var(--accent);
+  color:#fff;
+  box-shadow:0 10px 24px rgba(255,87,34,.30);
+}
+
+@media (prefers-reduced-motion:reduce){
+  .ev-dot, .ev-card, .map-preview-card, #map-status{ transition:none; }
 }
 
 /* ajuste visual para popup del mapa */
 .maplibregl-popup-content{
-  border-radius:12px;
-  box-shadow:0 10px 24px rgba(17,24,39,.16);
-  padding:8px 10px;
+  border-radius:10px;
+  box-shadow:0 4px 12px rgba(17,24,39,.10);
+  padding:6px 8px;
   font-family:'Plus Jakarta Sans',sans-serif;
 }
 

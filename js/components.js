@@ -49,40 +49,72 @@ function bottomNav() {
   </nav>`;
 }
 
-// Pantalla de mapa (vista grande + buscador superior)
+// Pantalla de mapa (vista grande + buscador + filtros por categoría + preview)
 function mapTabView() {
+  const cats = [{ id: 'all', label: 'Todos' }, ...FILTER_SECTIONS[0].options];
+  const chips = cats.map(c => {
+    const on = c.id === 'all' ? state.mapCat.size === 0 : state.mapCat.has(c.id);
+    return `<button type="button" data-map-cat="${c.id}" class="map-chip${on ? ' is-active' : ''}">${c.label}</button>`;
+  }).join('');
+
   return `<section id="map-screen" aria-label="Mapa de eventos">
     <div id="map-canvas" aria-label="Mapa"></div>
 
     <div id="map-overlay-top">
-      <div id="map-location-pill">
-        ${SVG.pin('#111827', 16)}
-        <span>${state.location}</span>
-      </div>
-
       <form id="map-search-form" data-map-search-form>
         ${SVG.search('#9CA3AF', 18)}
         <input
           type="search"
           data-map-search-input
           enterkeyhint="search"
-          placeholder="Buscar lugar o dirección..."
+          placeholder="Buscar lugar..."
           aria-label="Buscar en el mapa"
         >
-        <button type="submit" data-map-search-submit aria-label="Buscar">
-          ${SVG.search('#fff', 16)}
-        </button>
       </form>
-
-      <div id="map-quick-actions">
-        <button type="button" class="map-chip" data-map-quick="Sagrada Familia">Sagrada Familia</button>
-        <button type="button" class="map-chip" data-map-quick="Camp Nou">Camp Nou</button>
-        <button type="button" class="map-chip" data-map-current>${SVG.locate(AC, 14)}Mi ubicación</button>
-      </div>
+      <div id="map-chips" data-scroll role="group" aria-label="Filtrar por categoría">${chips}</div>
     </div>
 
     <div id="map-status" aria-live="polite"></div>
+    <div id="map-preview" aria-live="polite"></div>
   </section>`;
+}
+
+// Mini-card flotante anclada a cada punto del mapa (se inserta como marcador DOM)
+function mapMarkerMarkup(e) {
+  return `
+    <div class="ev-card">
+      <span class="ev-thumb" style="background:${CATBG[e.cat]};"><span class="ev-thumb-ic">${SVG.catIcon(e.cat, '#fff', 14)}</span></span>
+      <span class="ev-meta">
+        <span class="ev-t">${e.title}</span>
+        <span class="ev-s">${e.price} · ${e.dateShort}</span>
+      </span>
+    </div>
+    <span class="ev-dot"></span>`;
+}
+
+// Card de detalle (blanca) usada dentro del carrusel del mapa
+function mapPreviewCard(e) {
+  const d = dec(e);
+  return `<article class="map-preview-card" data-eid="${e.id}">
+    <div class="map-preview-hero" style="background:${d.bg};">
+      <div class="map-preview-hero-shine"></div>
+      <div class="map-preview-hero-icon">${SVG.catIcon(e.cat, 'rgba(255,255,255,.92)', 30)}</div>
+      <div class="map-preview-hero-grad"></div>
+      <button type="button" data-fav="${e.id}" class="map-preview-fav" aria-label="Guardar">${SVG.heart(d.heartFill, d.heartStroke, 18, e.id)}</button>
+      <button type="button" data-map-preview-close class="map-preview-close" aria-label="Cerrar">${SVG.close('#fff', 16)}</button>
+      <span class="map-preview-hero-price">${d.price}</span>
+      <span class="map-preview-status map-preview-hero-status" style="background:${d.statusBg};color:${d.statusColor};"><span style="background:${d.dotColor};"></span>${d.statusText}</span>
+    </div>
+    <div class="map-preview-body">
+      <div class="map-preview-title">${d.title}</div>
+      <div class="map-preview-line map-preview-date">${SVG.cal(AC, 13)}<span>${d.dateShort} · ${d.time}</span></div>
+      <div class="map-preview-line">${SVG.mapPin('#9CA3AF', 13)}<span>${d.venue} · ${d.area}</span></div>
+      <div class="map-preview-actions">
+        <button type="button" data-map-detail="${e.id}" class="map-preview-btn map-preview-ghost">Ver detalle</button>
+        <button type="button" data-map-buy="${e.id}" class="map-preview-btn map-preview-cta">Comprar</button>
+      </div>
+    </div>
+  </article>`;
 }
 
 // Tarjeta estándar (imagen arriba, ficha debajo)

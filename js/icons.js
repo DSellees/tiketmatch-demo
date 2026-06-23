@@ -36,4 +36,17 @@ const SVG = {
   // el corazón lleva data-eid para poder actualizarlo al marcar favorito
   heart: (fill, stroke, s, id) =>
     `<svg class="hsvg" data-eid="${id}" width="${s}" height="${s}" viewBox="0 0 24 24" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path></svg>`,
+
+  // icono por categoría — usado en las miniaturas de las mini-cards del mapa
+  catIcon: (cat, c = '#fff', s = 14) => {
+    const paths = {
+      concert:    '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>',
+      festival:   '<path d="M12 2.5l2.9 5.9 6.6 1-4.8 4.6 1.1 6.5L12 17.4 6.2 20.5l1.1-6.5L2.5 9.4l6.6-1z"></path>',
+      football:   '<circle cx="12" cy="12" r="9"></circle><path d="M12 7.2l2.6 1.9-1 3.1h-3.2l-1-3.1z"></path><path d="m5.6 10.2 2.8 1M18.4 10.2l-2.8 1M8.4 18l1.2-2.7M15.6 18l-1.2-2.7"></path>',
+      basket:     '<circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3v18"></path><path d="M5.6 5.6c3.4 2.6 3.4 10.2 0 12.8M18.4 5.6c-3.4 2.6-3.4 10.2 0 12.8"></path>',
+      balonmano:  '<circle cx="12" cy="12" r="9"></circle><path d="M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18M3.5 9c3 1.4 14 1.4 17 0M3.5 15c3-1.4 14-1.4 17 0"></path>',
+      experience: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3"></path><path d="M12 8l1.3 2.7L16 12l-2.7 1.3L12 16l-1.3-2.7L8 12l2.7-1.3z"></path>',
+    };
+    return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths[cat] || paths.experience}</svg>`;
+  },
 };

@@ -18,6 +18,8 @@ const state = {
   locationFocused: false,
   locationLoading: false,
   locationError: '',
+  mapCat: new Set(),   // categorías activas en el filtro del mapa (vacío = todas)
+  mapSelected: null,   // id del evento seleccionado (bottom sheet abierto)
 };
 
 const MAP_DEFAULT = { center: [2.1734, 41.3851], zoom: 12.2 };
@@ -37,10 +39,11 @@ const AREA_CENTER = {
 
 const mapRuntime = {
   instance: null,
-  eventMarkers: [],
+  eventMarkers: [],     // marcadores DOM de cada evento (con su mini-card)
   mainMarker: null,
   statusTimer: null,
   requestId: 0,
+  collisionRaf: null,   // rAF que agrupa el recálculo de colisiones al mover el mapa
 };
 
 // ── Lógica de filtrado ───────────────────────────────────────────────────────
@@ -128,14 +131,19 @@ function mapStyle() {
   return {
     version: 8,
     sources: {
-      osm: {
+      basemap: {
         type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tiles: [
+          'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+          'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+          'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+          'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        ],
         tileSize: 256,
-        attribution: '&copy; OpenStreetMap contributors',
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       },
     },
-    layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+    layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
   };
 }
 
@@ -166,6 +174,10 @@ function setMapStatus(message, timeout = 2200) {
 }
 
 function eventLngLat(event) {
+  if (Number.isFinite(event.lng) && Number.isFinite(event.lat)) {
+    return [event.lng, event.lat];
+  }
+  // Fallback: dispersa alrededor del centro de la zona si faltan coordenadas
   const base = AREA_CENTER[event.area] || MAP_DEFAULT.center;
   const n = Number(String(event.id).replace('e', '')) || 1;
   const lngOffset = ((n % 3) - 1) * 0.0058;
@@ -174,44 +186,296 @@ function eventLngLat(event) {
 }
 
 function clearEventMarkers() {
-  mapRuntime.eventMarkers.forEach(m => m.remove());
+  mapRuntime.eventMarkers.forEach(rec => rec.marker.remove());
   mapRuntime.eventMarkers = [];
 }
 
+// ¿Pasa el evento el filtro de categoría activo del mapa?
+function mapEventVisible(event) {
+  return state.mapCat.size === 0 || state.mapCat.has(event.cat);
+}
+
+// Prioridad de la card al resolver solapes (menor = se dibuja antes / gana sitio).
+// Los populares y los de "últimas entradas" tienen preferencia.
+function mapPriority(event) {
+  const popular = POPULAR.includes(event.id) ? 0 : 1;
+  const urgent = event.status === 'last' ? 0 : 1;
+  const idNum = Number(String(event.id).replace('e', '')) || 99;
+  return popular * 1000 + urgent * 100 + idNum;
+}
+
+function rectsIntersect(a, b) {
+  return a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
+}
+
+// Construye cada marcador como punto grande + mini-card anclada encima.
 function buildEventMarkers() {
   if (!mapRuntime.instance || !window.maplibregl) return;
   clearEventMarkers();
 
   EVENTS.forEach(event => {
-    const markerEl = document.createElement('button');
-    markerEl.type = 'button';
-    markerEl.style.cssText = [
-      'width:18px',
-      'height:18px',
-      'border:none',
-      'border-radius:50%',
-      `background:${AC}`,
-      'box-shadow:0 4px 10px rgba(17,24,39,.24)',
-      'cursor:pointer',
-    ].join(';');
+    const root = document.createElement('div');
+    root.className = 'ev-marker';
+    root.dataset.eid = event.id;
+    root.innerHTML = mapMarkerMarkup(event);
+    root.addEventListener('click', ev => {
+      ev.stopPropagation();
+      selectMapEvent(event.id);
+    });
 
-    const popup = new maplibregl.Popup({ offset: 12 }).setHTML(
-      `<div style="font-size:12px;line-height:1.35;"><strong style="font-family:'Sora',sans-serif;">${event.title}</strong><br>${event.venue} · ${event.price}</div>`
-    );
-
-    const marker = new maplibregl.Marker({ element: markerEl, anchor: 'bottom' })
+    const marker = new maplibregl.Marker({ element: root, anchor: 'center' })
       .setLngLat(eventLngLat(event))
-      .setPopup(popup)
       .addTo(mapRuntime.instance);
 
-    mapRuntime.eventMarkers.push(marker);
+    mapRuntime.eventMarkers.push({
+      event,
+      marker,
+      root,
+      lngLat: eventLngLat(event),
+      cw: 0,
+      ch: 0,
+    });
   });
+
+  applyMapFilter();
+  // medimos las cards en el siguiente frame (ya con layout) y de nuevo al cargar
+  // las fuentes, porque su ancho depende del título renderizado.
+  requestAnimationFrame(() => { measureMarkerCards(); updateMarkerCollisions(); });
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { measureMarkerCards(); updateMarkerCollisions(); });
+  }
+}
+
+// Cachea el tamaño real de cada mini-card (para el cálculo de solapes).
+function measureMarkerCards() {
+  mapRuntime.eventMarkers.forEach(rec => {
+    const card = rec.root.querySelector('.ev-card');
+    if (card && card.offsetWidth) {
+      rec.cw = card.offsetWidth;
+      rec.ch = card.offsetHeight;
+    }
+  });
+}
+
+// Aplica el filtro de categoría: oculta los marcadores que no pasan y recalcula.
+function applyMapFilter() {
+  mapRuntime.eventMarkers.forEach(rec => {
+    rec.root.style.display = mapEventVisible(rec.event) ? '' : 'none';
+  });
+  if (state.mapSelected && !mapEventVisible(EV[state.mapSelected])) {
+    deselectMapEvent(false);
+  }
+  updateMarkerCollisions();
+}
+
+function scheduleCollisions() {
+  if (mapRuntime.collisionRaf) return;
+  mapRuntime.collisionRaf = requestAnimationFrame(() => {
+    mapRuntime.collisionRaf = null;
+    updateMarkerCollisions();
+  });
+}
+
+// Decide qué mini-cards se muestran sin pisarse. Las que colisionan se colapsan
+// a su punto; al hacer zoom se separan y vuelven a aparecer.
+function updateMarkerCollisions() {
+  const map = mapRuntime.instance;
+  const canvas = document.getElementById('map-canvas');
+  if (!map || !canvas) return;
+
+  const mapRect = canvas.getBoundingClientRect();
+  const toLocal = el => {
+    const r = el.getBoundingClientRect();
+    return { l: r.left - mapRect.left, t: r.top - mapRect.top, r: r.right - mapRect.left, b: r.bottom - mapRect.top };
+  };
+
+  // zonas reservadas: buscador + chips arriba y, si está abierto, el bottom sheet.
+  const obstacles = [];
+  const top = document.getElementById('map-overlay-top');
+  if (top) { const o = toLocal(top); obstacles.push({ l: -50, t: -50, r: mapRect.width + 50, b: o.b + 8 }); }
+  const preview = document.getElementById('map-preview');
+  if (preview && preview.classList.contains('show')) {
+    const o = toLocal(preview);
+    obstacles.push({ l: o.l - 8, t: o.t - 8, r: o.r + 8, b: mapRect.height + 50 });
+  }
+
+  const placed = obstacles.slice();
+
+  const recs = mapRuntime.eventMarkers
+    .filter(rec => mapEventVisible(rec.event))
+    .map(rec => {
+      const p = map.project(rec.lngLat);
+      return { rec, x: p.x, y: p.y };
+    })
+    .sort((a, b) => {
+      const sa = state.mapSelected === a.rec.event.id ? 0 : 1;
+      const sb = state.mapSelected === b.rec.event.id ? 0 : 1;
+      if (sa !== sb) return sa - sb;               // el seleccionado primero
+      return mapPriority(a.rec.event) - mapPriority(b.rec.event);
+    });
+
+  recs.forEach(({ rec, x, y }) => {
+    const cw = rec.cw || 150;
+    const ch = rec.ch || 46;
+    const half = cw / 2;
+    const bottom = y - 16;                          // hueco entre punto y card
+
+    // mantenemos la card dentro del ancho desplazándola; la cola sigue apuntando
+    // al punto (en vez de recortarse contra el borde, se "ancla" al lateral).
+    let center = x;
+    const minC = 6 + half;
+    const maxC = mapRect.width - 6 - half;
+    if (maxC >= minC) center = Math.min(Math.max(x, minC), maxC);
+    const shift = center - x;
+
+    const box = { l: center - half - 5, t: bottom - ch - 5, r: center + half + 5, b: bottom + 5 };
+    const onScreen = x > -60 && x < mapRect.width + 60 && y > -60 && y < mapRect.height + 60;
+    const selected = state.mapSelected === rec.event.id;
+
+    const show = onScreen && (selected || !placed.some(p => rectsIntersect(p, box)));
+    if (show) {
+      placed.push(box);
+      rec.root.style.setProperty('--shift', shift.toFixed(1) + 'px');
+    }
+
+    rec.root.classList.toggle('show-card', show);
+    rec.root.style.zIndex = selected ? 40 : (show ? 12 : 2);
+  });
+}
+
+// ── Selección de un evento en el mapa (carrusel de detalle) ──────────────────
+
+// Distancia (en grados²; suficiente para ordenar en escala de ciudad).
+function eventDistanceSq(a, b) {
+  const [ax, ay] = eventLngLat(a);
+  const [bx, by] = eventLngLat(b);
+  return (ax - bx) ** 2 + (ay - by) ** 2;
+}
+
+// Eventos visibles (pasan el filtro) ordenados por cercanía a un evento ancla.
+function visibleEventsByDistance(anchorId) {
+  const anchor = EV[anchorId];
+  return EVENTS
+    .filter(mapEventVisible)
+    .map(ev => ({ ev, d: eventDistanceSq(anchor, ev) }))
+    .sort((a, b) => a.d - b.d)
+    .map(o => o.ev);
+}
+
+// El evento visible más cercano a un punto del mapa (centro por defecto).
+function nearestVisibleEvent(refLngLat) {
+  const visible = EVENTS.filter(mapEventVisible);
+  if (!visible.length) return null;
+  let best = null, bd = Infinity;
+  visible.forEach(ev => {
+    const [x, y] = eventLngLat(ev);
+    const d = (x - refLngLat[0]) ** 2 + (y - refLngLat[1]) ** 2;
+    if (d < bd) { bd = d; best = ev; }
+  });
+  return best;
+}
+
+// Resalta el marcador y la card activos sin reconstruir el carrusel.
+function highlightMapSelection(id) {
+  mapRuntime.eventMarkers.forEach(rec => rec.root.classList.toggle('is-selected', rec.event.id === id));
+  const track = document.querySelector('[data-map-track]');
+  if (track) {
+    track.querySelectorAll('.map-preview-card').forEach(card => {
+      card.classList.toggle('is-active', card.dataset.eid === id);
+    });
+  }
+}
+
+function flyToEvent(id, opts = {}) {
+  const rec = mapRuntime.eventMarkers.find(r => r.event.id === id);
+  if (!rec || !mapRuntime.instance) return;
+  mapRuntime.instance.flyTo({
+    center: rec.lngLat,
+    zoom: Math.max(mapRuntime.instance.getZoom(), 13.4),
+    speed: 0.7,
+    offset: [0, -70],   // levanta el punto por encima del carrusel
+    essential: true,
+    ...opts,
+  });
+}
+
+// Card centrada en el carrusel en este instante.
+function centeredPreviewCardId(track) {
+  const center = track.scrollLeft + track.clientWidth / 2;
+  let best = null, bd = Infinity;
+  [...track.children].forEach(card => {
+    const cc = card.offsetLeft + card.offsetWidth / 2;
+    const d = Math.abs(cc - center);
+    if (d < bd) { bd = d; best = card; }
+  });
+  return best && best.dataset.eid;
+}
+
+// Sincroniza selección + mapa SOLO cuando el scroll ya se ha asentado en una
+// card (scrollend). El flyTo nunca corre mientras se arrastra, para no frenar.
+function attachPreviewScroll(track) {
+  const settle = () => {
+    const id = centeredPreviewCardId(track);
+    if (!id || id === state.mapSelected) return;
+    state.mapSelected = id;
+    highlightMapSelection(id);
+    updateMarkerCollisions();
+    flyToEvent(id);
+  };
+
+  if ('onscrollend' in window) {
+    track.addEventListener('scrollend', settle, { passive: true });
+  } else {
+    // Fallback: esperamos a que el scroll se detenga del todo antes de mover el mapa.
+    let timer = null;
+    track.addEventListener('scroll', () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(settle, 160);
+    }, { passive: true });
+  }
+}
+
+// Construye el carrusel de cards (ancla primero) y lo deja centrado en `id`.
+function renderMapPreview(id) {
+  const box = document.getElementById('map-preview');
+  if (!box) return;
+  const list = visibleEventsByDistance(id);
+  box.innerHTML = `<div class="map-preview-track" data-map-track>${list.map(e => mapPreviewCard(e)).join('')}</div>`;
+  const track = box.querySelector('[data-map-track]');
+  track.scrollLeft = 0;            // el ancla es el primero → queda centrado
+  attachPreviewScroll(track);
+  requestAnimationFrame(() => {
+    box.classList.add('show');
+    highlightMapSelection(id);
+  });
+}
+
+// Selección desde marcador o filtro → reconstruye el carrusel anclado en `id`.
+function selectMapEvent(id) {
+  if (!EV[id]) return;
+  state.mapSelected = id;
+  highlightMapSelection(id);
+  renderMapPreview(id);
+  flyToEvent(id);
+  requestAnimationFrame(() => updateMarkerCollisions());
+}
+
+function deselectMapEvent(recompute = true) {
+  state.mapSelected = null;
+  mapRuntime.eventMarkers.forEach(rec => rec.root.classList.remove('is-selected'));
+  const box = document.getElementById('map-preview');
+  if (box) { box.classList.remove('show'); box.innerHTML = ''; }
+  if (recompute) updateMarkerCollisions();
 }
 
 function destroyMap() {
   if (mapRuntime.statusTimer) {
     clearTimeout(mapRuntime.statusTimer);
     mapRuntime.statusTimer = null;
+  }
+  if (mapRuntime.collisionRaf) {
+    cancelAnimationFrame(mapRuntime.collisionRaf);
+    mapRuntime.collisionRaf = null;
   }
   clearEventMarkers();
   if (mapRuntime.mainMarker) {
@@ -222,6 +486,7 @@ function destroyMap() {
     mapRuntime.instance.remove();
     mapRuntime.instance = null;
   }
+  state.mapSelected = null;   // el bottom sheet no sobrevive al salir del mapa
 }
 
 function ensureMapReady() {
@@ -247,17 +512,19 @@ function ensureMapReady() {
     attributionControl: false,
   });
 
-  mapRuntime.instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
   mapRuntime.instance.addControl(new maplibregl.AttributionControl({ compact: true }));
 
   mapRuntime.instance.on('load', () => {
     buildEventMarkers();
-    setMapStatus(`Mostrando eventos en ${state.location}`);
   });
 
-  mapRuntime.instance.on('error', () => {
-    setMapStatus('Error al cargar el mapa. Reintenta en unos segundos.', 3200);
-  });
+  // recalcula qué cards caben mientras se mueve/zoom el mapa
+  mapRuntime.instance.on('move', scheduleCollisions);
+  mapRuntime.instance.on('zoom', scheduleCollisions);
+  mapRuntime.instance.on('resize', scheduleCollisions);
+
+  // tocar el fondo del mapa cierra el bottom sheet
+  mapRuntime.instance.on('click', () => deselectMapEvent());
 }
 
 async function searchPlaceOnMap(rawQuery) {
@@ -408,8 +675,8 @@ function render() {
     <div id="content">
       <!-- cabecera: ubicación pulsable + notificaciones -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 20px 0;">
-        <button type="button" data-location-open aria-label="Cambiar ubicación" style="display:flex;align-items:center;gap:6px;height:44px;padding:0;border:none;background:none;">
-          ${SVG.pin(AC, 18)}
+        <button type="button" data-location-open aria-label="Cambiar ubicación" style="display:flex;align-items:center;gap:7px;height:44px;padding:0;border:none;background:none;">
+          ${SVG.pin(AC, 22)}
           <span style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:16px;color:#1F2937;letter-spacing:-.01em;">${state.location}</span>
           ${SVG.chevDown('#6B7280', 17)}
         </button>
@@ -569,17 +836,47 @@ document.addEventListener('click', e => {
     return;
   }
 
-  const quick = e.target.closest('[data-map-quick]');
-  if (quick) {
-    const q = quick.dataset.mapQuick || '';
-    const input = document.querySelector('[data-map-search-input]');
-    if (input) input.value = q;
-    searchPlaceOnMap(q);
+  // ── Mapa: filtros, cierre del sheet y CTA (sin re-render para no recrear el mapa)
+  const mapCatChip = e.target.closest('[data-map-cat]');
+  if (mapCatChip) {
+    const val = mapCatChip.dataset.mapCat;
+    if (val === 'all') state.mapCat.clear();
+    else state.mapCat.has(val) ? state.mapCat.delete(val) : state.mapCat.add(val);
+
+    document.querySelectorAll('[data-map-cat]').forEach(chip => {
+      const v = chip.dataset.mapCat;
+      const on = v === 'all' ? state.mapCat.size === 0 : state.mapCat.has(v);
+      chip.classList.toggle('is-active', on);
+    });
+    applyMapFilter();
+
+    // Al elegir un filtro concreto, saltamos al evento más cercano y abrimos
+    // su detalle automáticamente. "Todos" solo limpia y cierra el detalle.
+    if (state.mapCat.size > 0 && mapRuntime.instance) {
+      const c = mapRuntime.instance.getCenter();
+      const near = nearestVisibleEvent([c.lng, c.lat]);
+      if (near) selectMapEvent(near.id);
+    } else {
+      deselectMapEvent();
+    }
     return;
   }
 
-  if (e.target.closest('[data-map-current]')) {
-    useCurrentLocationOnMap();
+  if (e.target.closest('[data-map-preview-close]')) {
+    deselectMapEvent();
+    return;
+  }
+
+  const detailBtn = e.target.closest('[data-map-detail]');
+  if (detailBtn) {
+    selectMapEvent(detailBtn.dataset.mapDetail);
+    setMapStatus('Detalle del evento — demo de Catchtime', 2200);
+    return;
+  }
+
+  const buyBtn = e.target.closest('[data-map-buy]');
+  if (buyBtn) {
+    setMapStatus('Compra de entradas — demo de Catchtime', 2200);
     return;
   }
 

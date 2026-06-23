@@ -11,8 +11,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- Estilos -->
-  <link rel="stylesheet" href="css/styles.css">
+  <!-- Estilos (v= cache-busting: evita assets obsoletos con live-server/iCloud) -->
+  <link rel="stylesheet" href="css/styles.css?v=4">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css">
 </head>
 <body>
@@ -35,10 +35,10 @@
   </script>
 
   <!-- Scripts en orden de dependencia -->
-  <script src="js/data.js"></script>
-  <script src="js/icons.js"></script>
-  <script src="js/components.js"></script>
+  <script src="js/data.js?v=4"></script>
+  <script src="js/icons.js?v=4"></script>
+  <script src="js/components.js?v=4"></script>
   <script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/app.js?v=4"></script>
 </body>
 </html>

@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "catchtime-home",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "7823"],
-      "port": 7823
+      "runtimeExecutable": "/opt/homebrew/bin/live-server",
+      "runtimeArgs": ["--port=7823", "--no-browser", "--quiet"],
+      "port": 7823,
+      "autoPort": false
     }
   ]
 }
