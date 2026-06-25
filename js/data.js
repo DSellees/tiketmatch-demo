@@ -220,6 +220,30 @@ const POPULAR_CITIES = [
   'Bilbao', 'Málaga', 'Zaragoza', 'Granada', 'Palma',
 ];
 
+// Coordenadas de referencia para calcular distancia cuando no hay GPS
+const AREA_COORDS = {
+  'Montjuïc':     { lat: 41.3634, lng: 2.1527 },
+  'Sant Martí':   { lat: 41.4102, lng: 2.2004 },
+  'Cornellà':     { lat: 41.3556, lng: 2.0706 },
+  'Poblenou':     { lat: 41.4019, lng: 2.2042 },
+  'Eixample':     { lat: 41.3902, lng: 2.1602 },
+  'El Clot':      { lat: 41.4123, lng: 2.1892 },
+  'Les Corts':    { lat: 41.3871, lng: 2.1316 },
+  'Ciutat Vella': { lat: 41.3827, lng: 2.1762 },
+  'Poble-sec':    { lat: 41.3723, lng: 2.1618 },
+  'Pedralbes':    { lat: 41.3906, lng: 2.1116 },
+  'Gràcia':       { lat: 41.4034, lng: 2.1563 },
+  'Barcelona':    { lat: 41.3851, lng: 2.1734 },
+  'Madrid':       { lat: 40.4168, lng: -3.7038 },
+  'València':     { lat: 39.4699, lng: -0.3763 },
+  'Sevilla':      { lat: 37.3891, lng: -5.9845 },
+  'Bilbao':       { lat: 43.2630, lng: -2.9350 },
+  'Málaga':       { lat: 36.7213, lng: -4.4214 },
+  'Zaragoza':     { lat: 41.6488, lng: -0.8891 },
+  'Granada':      { lat: 37.1773, lng: -3.5986 },
+  'Palma':        { lat: 39.5696, lng: 2.6502 },
+};
+
 // opciones del panel de filtros
 const FILTER_SECTIONS = [
   {

@@ -16,6 +16,34 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
+function formatDistanceKm(km) {
+  if (km < 1) return 'A menos de 1 km de ti';
+  return 'A ' + km.toFixed(1).replace('.', ',') + ' km de ti';
+}
+
+// Título y subtítulo de card: en partidos, el enfrentamiento manda (no nombres de marketing)
+function cardHeadlines(d) {
+  if (d.homeTeam && d.awayTeam) {
+    return {
+      title: `${d.homeTeam} vs ${d.awayTeam}`,
+      subtitle: d.competition || d.venue,
+    };
+  }
+  return {
+    title: d.title,
+    subtitle: `${d.venue} · ${d.area}`,
+  };
+}
+
+function cardStatusBadge(d, extraStyle) {
+  if (d.status === 'last') return '';
+  return `<div style="display:inline-flex;align-items:center;gap:6px;background:${d.statusBg};color:${d.statusColor};font-size:11px;font-weight:700;padding:5px 10px;border-radius:999px;backdrop-filter:blur(6px);${extraStyle || ''}"><span style="width:6px;height:6px;border-radius:50%;background:${d.dotColor};"></span>${d.statusText}</div>`;
+}
+
+function cardPriceBlock(d, theme) {
+  return `<div class="card-price card-price--${theme}"><span class="card-price-now">${d.price}</span></div>`;
+}
+
 // Decora un evento con todo lo derivado del estado actual (favorito, colores…)
 function dec(e) {
   const faved = state.fav.has(e.id);
@@ -31,12 +59,16 @@ function dec(e) {
     statusColor: st.color,
     dotColor:    st.dot,
   };
-  // Si tenemos ubicación del usuario, calcula distancia
-  if (state.userLocation) {
-    const km = haversineDistance(state.userLocation.lat, state.userLocation.lng, e.lat, e.lng);
-    d.distanceText = km < 1 ? '< 1 km' : km.toFixed(1) + ' km';
-  }
+  const ref = state.userLocation || AREA_COORDS[state.location] || AREA_COORDS.Barcelona;
+  const km = haversineDistance(ref.lat, ref.lng, e.lat, e.lng);
+  d.distanceKm = km;
+  d.distanceText = km < 1 ? '< 1 km' : km.toFixed(1) + ' km';
+  d.distanceLabel = formatDistanceKm(km);
   return d;
+}
+
+function cardDistanceBadge(d, theme) {
+  return `<span class="card-distance card-distance--${theme}">${SVG.mapPin(theme === 'dark' ? '#FCA5A5' : '#EF4444', 12)}<span>${d.distanceLabel}</span></span>`;
 }
 
 // Renderiza la zona visual de la card: escudos si el evento es un partido,
@@ -144,132 +176,407 @@ function ticketsTabView() {
   </div>`;
 }
 
-// Vista detalle de una entrada — forma de ticket todo blanco
+// Genera el histórico de precio de una entrada (modelo de subasta descendente).
+// Usa datos reales si existen (priceHistory/initialPrice/currentPrice/...),
+// si no, deriva una curva descendente determinista a partir de priceNum.
+function priceTrend(e) {
+  const cur  = e.currentPrice || e.priceNum;
+  const init = e.initialPrice || Math.round(cur * 1.55);
+  const seed = e.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+
+  let pts;
+  if (Array.isArray(e.priceHistory) && e.priceHistory.length > 1) {
+    pts = e.priceHistory.slice();
+  } else {
+    const n = 7;
+    pts = [];
+    for (let i = 0; i < n; i++) {
+      const frac  = i / (n - 1);
+      const base  = init + (cur - init) * Math.pow(frac, 0.8);     // caída suave
+      const noise = (((seed * (i + 3)) % 7) - 3) * (init - cur) * 0.012; // micro-ruido
+      pts.push(Math.round(base + noise));
+    }
+    pts[0] = init;
+    pts[n - 1] = cur;
+  }
+
+  return {
+    init, cur, pts,
+    dropPct: Math.max(0, Math.round((1 - cur / init) * 100)),
+    avail:   e.availableTickets || ((seed % 32) + 7),
+    updated: e.lastUpdated || ('hace ' + (((seed % 5) + 1)) + ' h'),
+  };
+}
+
+// SVG de la gráfica precio/tiempo: línea + área + puntos, tendencia descendente.
+function priceChartSvg(pts, gradId) {
+  const gid = gradId || 'ptgrad';
+  const W = 320, H = 128, padX = 8, padTop = 14, padBot = 14;
+  const min = Math.min(...pts), max = Math.max(...pts);
+  const range = (max - min) || 1;
+  const n = pts.length;
+  const X = i => padX + (W - 2 * padX) * (i / (n - 1));
+  const Y = p => padTop + (H - padTop - padBot) * (1 - (p - min) / range);
+
+  const line = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p).toFixed(1)}`).join(' ');
+  const area = `M${X(0).toFixed(1)},${Y(pts[0]).toFixed(1)} ` +
+    pts.map((p, i) => `L${X(i).toFixed(1)},${Y(p).toFixed(1)}`).join(' ') +
+    ` L${X(n - 1).toFixed(1)},${H - padBot} L${X(0).toFixed(1)},${H - padBot} Z`;
+  const dots = pts.map((p, i) => {
+    const last = i === n - 1;
+    return `<circle cx="${X(i).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${last ? 4.6 : 2.4}" fill="${last ? AC : '#fff'}" stroke="${AC}" stroke-width="${last ? 2.4 : 1.6}"/>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto;overflow:visible;">
+    <defs>
+      <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${AC}" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="${AC}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <path d="${area}" fill="url(#${gid})"/>
+    <polyline points="${line}" fill="none" stroke="${AC}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dots}
+  </svg>`;
+}
+
+// Panel reutilizable: tarjeta de evolución de precio con gráfica (insertar donde haga falta)
+function priceChartPanel(e, opts) {
+  opts = opts || {};
+  const t = priceTrend(e);
+  const isSoon = e.status === 'soon';
+  const availLine = isSoon ? 'Aún no a la venta' : `${t.avail} entradas disponibles`;
+  const gradId = 'ptgrad-' + e.id;
+  const heading = opts.hideTitle ? '' :
+    `<div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#1A1A1A;letter-spacing:-.01em;margin:24px 0 10px;">Evolución del precio</div>`;
+
+  return `${heading}
+    <div class="price-chart-panel" style="background:#fff;border-radius:20px;padding:16px;box-shadow:0 2px 16px rgba(17,24,39,.05);">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:4px;">
+        <div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:600;color:#9CA3AF;margin-bottom:3px;">Precio actual</div>
+          <div style="display:flex;align-items:flex-end;gap:9px;">
+            <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:30px;color:#1A1A1A;letter-spacing:-.03em;line-height:.9;">€${t.cur}</span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:15px;font-weight:600;color:#B0B0B0;text-decoration:line-through;margin-bottom:3px;">€${t.init}</span>
+          </div>
+        </div>
+        <span style="display:inline-flex;align-items:center;gap:4px;background:#ECFDF5;color:#16A34A;font-size:12px;font-weight:800;padding:5px 11px;border-radius:999px;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 17V9M17 17H9"></path></svg>−${t.dropPct}%
+        </span>
+      </div>
+      <div style="margin:10px 0 6px;">${priceChartSvg(t.pts, gradId)}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid #F1F1F2;">
+        <span style="display:inline-flex;align-items:center;gap:6px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:600;color:#374151;">
+          <span style="width:6px;height:6px;border-radius:50%;background:${isSoon ? '#9CA3AF' : '#16A34A'};"></span>${availLine}
+        </span>
+        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:500;color:#A3A3A3;">Actualizado ${t.updated}</span>
+      </div>
+    </div>`;
+}
+
+// Ciudad del evento (deriva de la zona/recinto; por defecto Barcelona)
+function eventCity(e) {
+  const map = { 'Girona': 'Girona', 'Sevilla': 'Sevilla', 'San Sebastián': 'San Sebastián', 'Valencia': 'València' };
+  return map[e.area] || 'Barcelona';
+}
+
+// Copys de descripción por categoría (demo)
+const EVENT_DESC = {
+  football:   'Vive el partido desde dentro: ambiente de estadio, afición entregada y noventa minutos de máxima tensión deportiva.',
+  basket:     'La mejor cita del baloncesto en cancha, con un ambiente eléctrico de principio a fin y jugadas de altísimo nivel.',
+  balonmano:  'Velocidad, intensidad y emoción en un derbi de balonmano que no querrás perderte.',
+  concert:    'Una noche de música en directo con un sonido cuidado y una puesta en escena envolvente.',
+  festival:   'Varios escenarios, los mejores artistas del momento y una experiencia de festival inolvidable.',
+  experience: 'Una experiencia única pensada para disfrutar al máximo, con plazas limitadas y un trato cercano.',
+};
+
+// Vista de DETALLE DE EVENTO (previa a la compra) — hero grande + info + CTA
+function eventDetailView() {
+  const e = EV[state.eventDetail];
+  if (!e) return '';
+  const d   = dec(e);
+  const t   = priceTrend(e);
+  const h   = cardHeadlines(d);
+  const city = eventCity(e);
+  const catLabel = CATNAME[e.cat][0].toUpperCase() + CATNAME[e.cat].slice(1);
+  const isSoon = e.status === 'soon';
+  const isLast = e.status === 'last';
+
+  // Apertura de puertas = hora del evento − 1 h
+  const [hh, mm] = e.time.split(':').map(Number);
+  const od = new Date(2000, 0, 1, hh, mm); od.setMinutes(od.getMinutes() - 60);
+  const opening = String(od.getHours()).padStart(2, '0') + ':' + String(od.getMinutes()).padStart(2, '0');
+
+  const durationByCat = { football: '≈ 2 h', basket: '≈ 2 h', balonmano: '≈ 1 h 30 min', concert: '≈ 2 h 30 min', festival: 'Todo el día', experience: '≈ 1 h 30 min' };
+  const ageByCat      = { football: 'Todos los públicos', basket: 'Todos los públicos', balonmano: 'Todos los públicos', concert: '+16 (menores con adulto)', festival: '+16 (menores con adulto)', experience: 'Todos los públicos' };
+
+  const heroVisual = (d.homeCrest && d.awayCrest)
+    ? `<div style="display:flex;align-items:center;justify-content:center;gap:26px;">
+        <img src="assets/crests/${d.homeCrest}.png" alt="${d.homeTeam}" style="width:88px;height:88px;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.7));" onerror="this.style.display='none'">
+        <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:15px;color:rgba(255,255,255,.45);letter-spacing:.08em;">VS</span>
+        <img src="assets/crests/${d.awayCrest}.png" alt="${d.awayTeam}" style="width:88px;height:88px;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.7));" onerror="this.style.display='none'">
+      </div>`
+    : SVG.catIcon(e.cat, 'rgba(255,255,255,.18)', 84);
+
+  // Fila de detalle con icono
+  const infoRow = (ico, label, val) =>
+    `<div style="display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:1px solid #F3F4F6;">
+       <span style="width:38px;height:38px;border-radius:11px;background:#F6F6F7;display:flex;align-items:center;justify-content:center;flex:none;">${ico}</span>
+       <div style="flex:1;min-width:0;">
+         <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:500;color:#9CA3AF;">${label}</div>
+         <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14.5px;font-weight:700;color:#1A1A1A;line-height:1.25;margin-top:1px;">${val}</div>
+       </div>
+     </div>`;
+
+  const ic = {
+    cal:    `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="${AC}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M3 10h18"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect></svg>`,
+    clock:  `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="${AC}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>`,
+    pin:    `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="${AC}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
+    city:   `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="${AC}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"></path></svg>`,
+    door:   `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4h3a2 2 0 0 1 2 2v14M2 20h3M13 20h9M10 12v.01M13 2H7a2 2 0 0 0-2 2v16"></path></svg>`,
+    timer:  `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2 2M9 2h6"></path></svg>`,
+    user:   `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>`,
+    ticket: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4V7a1 1 0 0 1 1-1Z"></path></svg>`,
+  };
+
+  const participants = (d.homeTeam && d.awayTeam)
+    ? `<div style="background:#fff;border:1px solid #F0F0F1;border-radius:18px;padding:16px;margin-top:14px;display:flex;align-items:center;justify-content:space-around;">
+         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;">
+           <img src="assets/crests/${d.homeCrest}.png" alt="${d.homeTeam}" style="width:52px;height:52px;object-fit:contain;" onerror="this.style.display='none'">
+           <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:700;color:#1A1A1A;text-align:center;line-height:1.2;">${d.homeTeam}</span>
+         </div>
+         <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:14px;color:#C7C9CE;flex:none;padding:0 6px;">VS</span>
+         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;">
+           <img src="assets/crests/${d.awayCrest}.png" alt="${d.awayTeam}" style="width:52px;height:52px;object-fit:contain;" onerror="this.style.display='none'">
+           <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:700;color:#1A1A1A;text-align:center;line-height:1.2;">${d.awayTeam}</span>
+         </div>
+       </div>`
+    : '';
+
+  const sectionTitle = (txt) =>
+    `<div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#1A1A1A;letter-spacing:-.01em;margin:24px 0 10px;">${txt}</div>`;
+
+  const ctaLabel  = isSoon ? 'Avísame cuando salga' : (isLast ? 'Comprar · últimas entradas' : 'Comprar entrada');
+  const statusBadge = cardStatusBadge(d, 'padding:5px 11px;');
+
+  return `<div style="position:fixed;inset:0;background:#F5F5F6;z-index:30;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+
+    <!-- ── HERO ── -->
+    <div style="position:relative;width:100%;height:clamp(320px,54vh,480px);overflow:hidden;background:${d.bg};">
+      <div style="position:absolute;inset:0;background:radial-gradient(ellipse 120% 70% at 50% 22%,rgba(255,255,255,.08),transparent 58%),linear-gradient(180deg,rgba(17,24,39,.34) 0%,rgba(17,24,39,0) 30%,rgba(17,24,39,.30) 62%,rgba(17,24,39,.86) 100%);"></div>
+
+      <!-- Barra superior: volver + acciones -->
+      <div style="position:absolute;top:0;left:0;right:0;z-index:2;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;">
+        <button type="button" data-event-close style="width:40px;height:40px;border-radius:50%;border:none;background:rgba(17,24,39,.38);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+        </button>
+        <div style="display:flex;gap:10px;">
+          <button type="button" data-event-share style="width:40px;height:40px;border-radius:50%;border:none;background:rgba(17,24,39,.38);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+          </button>
+          <button type="button" data-fav="${e.id}" style="width:40px;height:40px;border-radius:50%;border:none;background:rgba(17,24,39,.38);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;">${SVG.heart(d.heartFill, d.heartStroke, 19, e.id)}</button>
+        </div>
+      </div>
+
+      <div style="position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;padding:72px 22px 40px;box-sizing:border-box;">
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0;">
+          ${heroVisual}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;">
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.92);color:#1A1A1A;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:700;padding:5px 11px;border-radius:999px;">${SVG.catIcon(e.cat, AC, 12)} ${catLabel}</span>
+            ${statusBadge}
+          </div>
+          <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:26px;color:#fff;letter-spacing:-.03em;line-height:1.12;text-shadow:0 2px 14px rgba(0,0,0,.5);max-width:100%;">${h.title}</div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,.88);margin-top:8px;line-height:1.35;">${h.subtitle}</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-top:12px;color:rgba(255,255,255,.78);font-size:12.5px;font-weight:600;flex-wrap:wrap;">
+            <span style="display:flex;align-items:center;gap:5px;">${SVG.cal('currentColor')} ${e.dateShort} · ${e.time}</span>
+            <span style="display:flex;align-items:center;gap:5px;">${SVG.mapPin('currentColor')} ${e.venue}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── HOJA DE CONTENIDO ── -->
+    <div style="position:relative;margin-top:-26px;background:#F5F5F6;border-radius:28px 28px 0 0;padding:8px 18px 130px;">
+      <div style="display:flex;justify-content:center;padding:8px 0 4px;"><div style="width:38px;height:4px;border-radius:2px;background:#D8D8DA;"></div></div>
+
+      <!-- Detalles del evento -->
+      <div style="background:#fff;border-radius:20px;padding:4px 16px;box-shadow:0 2px 16px rgba(17,24,39,.05);margin-top:8px;">
+        ${infoRow(ic.cal, 'Fecha', e.dateShort)}
+        ${infoRow(ic.clock, 'Hora', e.time + ' · Puertas ' + opening)}
+        ${infoRow(ic.pin, 'Recinto', e.venue + ' · ' + e.area)}
+        <div style="display:flex;align-items:center;gap:13px;padding:13px 0;">
+          <span style="width:38px;height:38px;border-radius:11px;background:#F6F6F7;display:flex;align-items:center;justify-content:center;flex:none;">${ic.city}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:500;color:#9CA3AF;">Ciudad</div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14.5px;font-weight:700;color:#1A1A1A;line-height:1.25;margin-top:1px;">${city}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Participantes (solo deportes) -->
+      ${participants}
+
+      <!-- ── GRÁFICA DE PRECIO / TIEMPO ── -->
+      ${priceChartPanel(e)}
+
+      <!-- ── DESCRIPCIÓN ── -->
+      ${sectionTitle('Sobre el evento')}
+      <div style="background:#fff;border-radius:20px;padding:16px 16px 18px;box-shadow:0 2px 16px rgba(17,24,39,.05);">
+        <p style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:500;color:#4B5563;line-height:1.6;margin:0 0 14px;">${EVENT_DESC[e.cat] || ''}</p>
+        <div style="display:flex;flex-direction:column;gap:9px;">
+          ${['Acceso al recinto incluido', isSoon ? 'Reserva con aviso de salida a la venta' : 'Reserva garantizada al instante', 'Entrada digital en tu móvil'].map(txt => `
+            <div style="display:flex;align-items:center;gap:9px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${AC}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><path d="M20 6 9 17l-5-5"></path></svg>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;color:#374151;">${txt}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- ── INFORMACIÓN ADICIONAL ── -->
+      ${sectionTitle('Información práctica')}
+      <div style="background:#fff;border-radius:20px;padding:4px 16px;box-shadow:0 2px 16px rgba(17,24,39,.05);">
+        ${infoRow(ic.door, 'Apertura de puertas', opening + ' (1 h antes)')}
+        ${infoRow(ic.timer, 'Duración aproximada', durationByCat[e.cat] || '≈ 2 h')}
+        ${infoRow(ic.user, 'Edad mínima', ageByCat[e.cat] || 'Todos los públicos')}
+        <div style="display:flex;align-items:center;gap:13px;padding:13px 0;">
+          <span style="width:38px;height:38px;border-radius:11px;background:#F6F6F7;display:flex;align-items:center;justify-content:center;flex:none;">${ic.ticket}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:500;color:#9CA3AF;">Política de entradas</div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14.5px;font-weight:700;color:#1A1A1A;line-height:1.25;margin-top:1px;">Nominales · cambios hasta 48 h antes</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── BARRA DE COMPRA STICKY ── -->
+    <div style="position:fixed;left:0;right:0;bottom:0;z-index:35;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);border-top:1px solid #ECECEE;padding:12px 18px calc(12px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:14px;">
+      <div style="flex:none;">
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;color:#9CA3AF;line-height:1;">Desde</div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-top:3px;">
+          <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:23px;color:#1A1A1A;letter-spacing:-.02em;line-height:1;">€${t.cur}</span>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;color:#B0B0B0;text-decoration:line-through;">€${t.init}</span>
+        </div>
+      </div>
+      <button type="button" ${isSoon ? 'data-event-notify' : 'data-event-buy'}="${e.id}" style="flex:1;height:52px;border:none;border-radius:15px;background:${isSoon ? '#1A1A1A' : AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:-.01em;">
+        ${isSoon ? '' : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4V7a1 1 0 0 1 1-1Z"></path></svg>`}
+        ${ctaLabel}
+      </button>
+    </div>
+  </div>`;
+}
+
+// Vista detalle de una entrada — card premium estilo iOS con notches y QR
 function ticketDetailView() {
   const e = EV[state.ticketDetail];
   if (!e) return '';
-  const isPast   = new Date(e.date + 'T12:00:00') < TODAY;
-  const pageBg   = '#F2F3F5';
-  const catLabel = CATNAME[e.cat][0].toUpperCase() + CATNAME[e.cat].slice(1);
+  const isPast  = new Date(e.date + 'T12:00:00') < TODAY;
+  const d       = dec(e);
+  const h       = cardHeadlines(d);
+  const pageBg  = '#F2F2F2';
 
-  const qrMed = qrSvg(e.id, 200, '#111827');
-  const qrXL  = qrSvg(e.id, 300, '#ffffff');
+  const qrSm = qrSvg(e.id, 132, '#111827');
+  const qrXL = qrSvg(e.id, 300, '#ffffff');
 
-  // URLs para acciones externas
-  const dateStr  = e.date.replace(/-/g, '');
-  const timeStr  = e.time.replace(':', '') + '00';
-  const calUrl   = encodeURIComponent(`https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(e.title)}&dates=${dateStr}T${timeStr}/${dateStr}T${timeStr}&location=${encodeURIComponent(e.venue + ', Barcelona')}`);
-  const mapsQ    = encodeURIComponent(e.venue + ', Barcelona');
+  // ID de ticket determinista
+  const seed = e.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const ticketId = (seed * 137 + 1001).toString().slice(0, 4) + '-' + (seed * 89 + 2003).toString().slice(0, 4);
+  const seat     = 'Sec. ' + String.fromCharCode(65 + (seed % 5)) + ', As. ' + ((seed % 40) + 1);
 
-  // Chip de acción inline
-  const chip = (label, ico, dataKey, dataVal) =>
-    `<button type="button" ${dataKey}="${dataVal}" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;border:1.5px solid #E5E7EB;background:#F9FAFB;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:700;color:#374151;cursor:pointer;white-space:nowrap;flex:none;">
-       ${ico} ${label}
-     </button>`;
-
-  // Fila de detalle con chip opcional a la derecha
-  const drow = (label, val, chipHtml = '') =>
-    `<div style="display:flex;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6;gap:8px;">
-       <span style="flex:0 0 72px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:500;color:#9CA3AF;">${label}</span>
-       <span style="flex:1;font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;color:#111827;line-height:1.3;">${val}</span>
-       ${chipHtml}
-     </div>`;
-
-  const calIco  = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M3 10h18"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect></svg>`;
-  const mapIco  = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>`;
-
-  // QR fullscreen (negro)
+  // QR fullscreen
   const fullscreen = state.qrFullscreen ? `
-    <div data-qr-close style="position:absolute;inset:0;background:#000;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;cursor:pointer;">
+    <div data-qr-close style="position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;cursor:pointer;">
       <div style="background:#111;border-radius:24px;padding:24px;">${qrXL}</div>
       <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:700;color:rgba(255,255,255,.3);letter-spacing:.16em;text-transform:uppercase;">Toca para cerrar</div>
     </div>` : '';
 
-  return `<div style="position:absolute;inset:0;background:${pageBg};display:flex;flex-direction:column;z-index:30;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  // Contenido de la imagen: escudos para partidos, icono de categoría para el resto
+  const imageInner = (d.homeCrest && d.awayCrest)
+    ? `<div style="display:flex;align-items:center;justify-content:center;gap:22px;">
+        <img src="assets/crests/${d.homeCrest}.png" alt="${d.homeTeam}" style="width:78px;height:78px;object-fit:contain;filter:drop-shadow(0 4px 16px rgba(0,0,0,.7));" onerror="this.style.display='none'">
+        <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:13px;color:rgba(255,255,255,.4);letter-spacing:.08em;">VS</span>
+        <img src="assets/crests/${d.awayCrest}.png" alt="${d.awayTeam}" style="width:78px;height:78px;object-fit:contain;filter:drop-shadow(0 4px 16px rgba(0,0,0,.7));" onerror="this.style.display='none'">
+      </div>`
+    : SVG.catIcon(e.cat, 'rgba(255,255,255,.16)', 72);
+
+  // Celda de info (label gris + valor oscuro, centrada)
+  const cell = (label, val) =>
+    `<div style="text-align:center;">
+       <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:500;color:#9CA3AF;margin-bottom:5px;">${label}</div>
+       <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:16px;font-weight:700;color:#1A1A1A;line-height:1.2;">${val}</div>
+     </div>`;
+
+  return `<div style="position:fixed;inset:0;background:${pageBg};z-index:30;overflow-y:auto;-webkit-overflow-scrolling:touch;">
     ${fullscreen}
 
-    <!-- Cabecera -->
-    <div style="display:flex;align-items:center;justify-content:center;padding:18px 20px 10px;position:relative;flex:none;">
-      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:#111827;">Tu entrada</div>
-      <button type="button" data-ticket-close style="position:absolute;right:20px;width:34px;height:34px;border-radius:50%;border:none;background:rgba(17,24,39,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+    <!-- Header: volver + título -->
+    <div style="display:flex;align-items:center;padding:16px 20px 14px;">
+      <button type="button" data-ticket-close style="width:38px;height:38px;border-radius:50%;border:none;background:#fff;box-shadow:0 2px 10px rgba(17,24,39,.10);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
       </button>
+      <div style="flex:1;text-align:center;font-family:'Sora',sans-serif;font-weight:700;font-size:17px;color:#1A1A1A;">Entrada</div>
+      <div style="width:38px;flex:none;"></div>
     </div>
 
-    <!-- ── Tarjeta ticket: todo blanco ── -->
-    <div style="position:relative;margin:6px 16px 20px;flex:none;">
+    <!-- ── Tarjeta de ticket ── -->
+    <div style="margin:0 18px 28px;filter:drop-shadow(0 10px 40px rgba(17,24,39,.16));">
 
-      <!-- Sección QR -->
-      <div style="background:#fff;border-radius:24px 24px 0 0;padding:24px 20px 28px;text-align:center;">
-        <div data-qr-open style="display:inline-block;position:relative;cursor:pointer;">
-          ${qrMed}
-          <div style="position:absolute;bottom:4px;right:4px;background:rgba(17,24,39,.07);border-radius:6px;padding:3px 7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;font-weight:700;color:#6B7280;display:flex;align-items:center;gap:2px;">
-            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>ampliar
+      <!-- Parte superior blanca con imagen embebida -->
+      <div style="background:#fff;border-radius:28px 28px 0 0;overflow:hidden;padding:0 0 8px;">
+
+        <!-- Imagen del evento a ras de la card (sin márgenes superior/lateral) -->
+        <div style="position:relative;width:100%;aspect-ratio:1/1;overflow:hidden;background:${d.bg};display:flex;flex-direction:column;">
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse 120% 75% at 50% 18%,rgba(255,255,255,.08),transparent 55%),linear-gradient(180deg,rgba(17,24,39,.10) 0%,rgba(17,24,39,0) 38%,rgba(17,24,39,.74) 84%,rgba(17,24,39,.95) 100%);"></div>
+          <div style="position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;padding:28px 16px 12px;">
+            ${imageInner}
+          </div>
+          <!-- Texto del evento centrado abajo -->
+          <div style="position:relative;z-index:1;padding:0 16px 18px;text-align:center;">
+            <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:21px;color:#fff;letter-spacing:-.02em;line-height:1.15;text-shadow:0 2px 12px rgba(0,0,0,.55);">${h.title}</div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;color:rgba(255,255,255,.82);margin-top:5px;line-height:1.35;">${h.subtitle}</div>
           </div>
         </div>
-        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:500;color:#9CA3AF;margin-top:12px;">Muestra este código en la entrada del recinto</div>
-        <div style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;background:${isPast ? '#F3F4F6' : '#ECFDF5'};color:${isPast ? '#9CA3AF' : '#16A34A'};font-size:11px;font-weight:700;padding:4px 12px;border-radius:999px;">
-          <div style="width:6px;height:6px;border-radius:50%;background:currentColor;"></div>
-          ${isPast ? 'Usada' : 'Válida'}
+
+        <!-- Info en grid 2 columnas, centrado -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;row-gap:20px;column-gap:16px;padding:22px 18px 6px;text-align:center;">
+          ${cell('Fecha', e.dateShort)}
+          ${cell('Hora', e.time)}
+          ${cell('Recinto', e.venue)}
+          ${cell('Localidad', seat)}
+          ${cell('Titular', state.profileName || 'Titular')}
+          ${cell('Referencia', 'ID: ' + ticketId)}
         </div>
       </div>
 
-      <!-- Muescas del ticket -->
-      <div style="position:relative;height:0;z-index:5;overflow:visible;">
-        <div style="position:absolute;left:-16px;top:-16px;width:calc(100% + 32px);height:32px;display:flex;align-items:center;pointer-events:none;">
+      <!-- Separador con muescas -->
+      <div style="position:relative;background:#fff;height:0;z-index:2;overflow:visible;">
+        <div style="position:absolute;left:-18px;top:-16px;width:calc(100% + 36px);height:32px;display:flex;align-items:center;pointer-events:none;">
           <div style="width:32px;height:32px;border-radius:50%;background:${pageBg};flex:none;"></div>
-          <div style="flex:1;border-top:2px dashed #D1D5DB;"></div>
+          <div style="flex:1;border-top:1.5px dashed #D1D5DB;margin:0 6px;"></div>
           <div style="width:32px;height:32px;border-radius:50%;background:${pageBg};flex:none;"></div>
         </div>
       </div>
 
-      <!-- Sección detalles -->
-      <div style="background:#fff;border-radius:0 0 24px 24px;padding:22px 20px 20px;">
-
-        <!-- Nombre + categoría -->
-        <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:17px;color:#111827;letter-spacing:-.02em;line-height:1.25;margin-bottom:6px;">${e.title}</div>
-        <div style="display:inline-flex;align-items:center;gap:5px;background:${AS};color:${AC};font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;margin-bottom:14px;">
-          ${SVG.catIcon(e.cat, AC, 11)} ${catLabel}
-        </div>
-
-        <!-- Filas de info -->
-        ${drow('Fecha',   e.dateShort, chip('Calendario', calIco, 'data-ticket-cal', calUrl))}
-        ${drow('Hora',    e.time)}
-        ${drow('Recinto', e.venue,     chip('Maps', mapIco, 'data-ticket-maps', mapsQ))}
-        ${drow('Zona',    e.area)}
-        ${drow('Precio',  `<span style="font-family:'Sora',sans-serif;font-weight:800;font-size:17px;letter-spacing:-.02em;">${e.price}</span>`)}
-
-        <!-- Wallet -->
-        <div style="margin-top:18px;padding-top:16px;border-top:1px solid #F3F4F6;">
-          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:700;color:#9CA3AF;letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;">Añadir a cartera</div>
-          <div style="display:flex;gap:10px;">
-            <!-- Apple Wallet -->
-            <button type="button" style="flex:1;height:44px;border:none;border-radius:12px;background:#000;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;">
-              <svg width="13" height="16" viewBox="0 0 814 1000" fill="white"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-37.5-155.5-98.3C111.5 787.8 47 665.2 47 543.5c0-183.7 120.5-280.9 232.1-280.9 61.5 0 112.8 43.5 150.7 43.5 36.1 0 93.5-46.2 162.4-46.2 26.4 0 108.2 2.6 164.4 100.4zm-180.6-159.8c28.5-35.7 49.2-85.4 49.2-135.1 0-6.9-.6-13.9-1.9-19.5-46.5 1.9-101.6 31.2-135.2 70.6-26.1 29.9-50.9 79.6-50.9 130 0 7.5 1.3 14.9 1.9 17.2 3.2.6 8.4 1.3 13.6 1.3 41.5 0 93.7-28 123.3-64.5z"/></svg>
-              Apple Wallet
-            </button>
-            <!-- Google Wallet -->
-            <button type="button" style="flex:1;height:44px;border:1.5px solid #E5E7EB;border-radius:12px;background:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:12px;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;">
-              <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-              Google Wallet
-            </button>
+      <!-- Parte inferior blanca: QR -->
+      <div style="background:#fff;border-radius:0 0 28px 28px;padding:26px 22px 24px;display:flex;flex-direction:column;align-items:center;gap:14px;">
+        <div data-qr-open style="cursor:pointer;position:relative;display:inline-block;">
+          ${qrSm}
+          <div style="position:absolute;bottom:5px;right:5px;background:rgba(17,24,39,.07);border-radius:5px;padding:2px 6px;font-family:'Plus Jakarta Sans',sans-serif;font-size:8px;font-weight:700;color:#6B7280;display:flex;align-items:center;gap:2px;">
+            <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>ampliar
           </div>
         </div>
-      </div>
-    </div>
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:500;color:#B0B0B0;text-align:center;">Muestra este código en el acceso al recinto</div>
 
-    <!-- CTAs -->
-    <div style="padding:0 16px 26px;display:flex;gap:12px;flex:none;">
-      <button type="button" style="flex:1;height:50px;border:1.5px solid #E5E7EB;border-radius:14px;background:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        Descargar
-      </button>
-      <button type="button" style="flex:1;height:50px;border:none;border-radius:14px;background:${AC};color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-        Compartir
-      </button>
+        <!-- Apple Wallet -->
+        <button type="button" style="width:100%;height:50px;border:none;border-radius:14px;background:#000;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;">
+          <svg width="14" height="17" viewBox="0 0 814 1000" fill="white"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-37.5-155.5-98.3C111.5 787.8 47 665.2 47 543.5c0-183.7 120.5-280.9 232.1-280.9 61.5 0 112.8 43.5 150.7 43.5 36.1 0 93.5-46.2 162.4-46.2 26.4 0 108.2 2.6 164.4 100.4zm-180.6-159.8c28.5-35.7 49.2-85.4 49.2-135.1 0-6.9-.6-13.9-1.9-19.5-46.5 1.9-101.6 31.2-135.2 70.6-26.1 29.9-50.9 79.6-50.9 130 0 7.5 1.3 14.9 1.9 17.2 3.2.6 8.4 1.3 13.6 1.3 41.5 0 93.7-28 123.3-64.5z"/></svg>
+          Add to Apple Wallet
+        </button>
+      </div>
+
     </div>
-    <div style="height:env(safe-area-inset-bottom,0px);min-height:8px;"></div>
+    <div style="height:env(safe-area-inset-bottom,0px);min-height:12px;"></div>
   </div>`;
 }
 
@@ -479,8 +786,8 @@ function mapPreviewCard(e) {
       <div class="map-preview-line map-preview-date">${SVG.cal(AC, 13)}<span>${d.dateShort} · ${d.time}</span></div>
       <div class="map-preview-line">${SVG.mapPin('#9CA3AF', 13)}<span>${d.venue} · ${d.area}</span></div>
       <div class="map-preview-actions">
-        <button type="button" data-map-detail="${e.id}" class="map-preview-btn map-preview-ghost">Ver detalle</button>
-        <button type="button" data-map-buy="${e.id}" class="map-preview-btn map-preview-cta">Comprar</button>
+        <button type="button" data-event-open="${e.id}" class="map-preview-btn map-preview-ghost">Ver detalle</button>
+        <button type="button" data-event-open="${e.id}" class="map-preview-btn map-preview-cta">Comprar</button>
       </div>
     </div>
   </article>`;
@@ -489,24 +796,20 @@ function mapPreviewCard(e) {
 // Tarjeta estándar (imagen arriba, ficha debajo)
 function cardStd(e) {
   const d = dec(e);
-  const teamsLine = d.homeTeam && d.awayTeam
-    ? `<div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;color:#6B7280;margin-top:3px;">${d.homeTeam} <span style="color:#9CA3AF;">vs</span> ${d.awayTeam}</div>`
-    : '';
-  const distanceBadge = d.distanceText
-    ? `<span style="font-size:10px;font-weight:700;color:#EF4444;background:#FEE2E2;padding:2px 8px;border-radius:999px;margin-left:6px;">${d.distanceText}</span>`
-    : '';
-  return `<div style="width:100%;font-family:'Plus Jakarta Sans',-apple-system,sans-serif;background:#fff;">
+  const h = cardHeadlines(d);
+  const statusBadge = cardStatusBadge(d);
+  return `<div class="home-card" data-event-open="${e.id}" style="width:100%;font-family:'Plus Jakarta Sans',-apple-system,sans-serif;background:#fff;cursor:pointer;">
     <div style="position:relative;width:100%;aspect-ratio:1.55;border-radius:18px;overflow:hidden;">
       ${cardVisual(d)}
-      <div style="position:absolute;top:10px;left:10px;background:#fff;color:#111827;font-weight:800;font-size:13px;padding:5px 11px;border-radius:999px;">${d.price}</div>
+      <div style="position:absolute;top:10px;left:10px;max-width:calc(100% - 56px);">${cardPriceBlock(d, 'light')}</div>
       <button data-fav="${e.id}" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:none;border-radius:50%;background:rgba(17,24,39,.42);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:0;">${SVG.heart(d.heartFill, d.heartStroke, 17, e.id)}</button>
-      <div style="position:absolute;bottom:10px;left:10px;display:flex;align-items:center;gap:6px;background:${d.statusBg};color:${d.statusColor};font-size:11px;font-weight:700;padding:5px 10px;border-radius:999px;backdrop-filter:blur(6px);"><span style="width:6px;height:6px;border-radius:50%;background:${d.dotColor};"></span>${d.statusText}</div>
+      ${statusBadge ? `<div style="position:absolute;bottom:10px;left:10px;">${statusBadge}</div>` : ''}
+      <div style="position:absolute;bottom:10px;right:10px;">${cardDistanceBadge(d, 'light')}</div>
     </div>
     <div style="padding:12px 2px 2px;">
       <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;">${SVG.cal(AC)}<span style="color:#6B7280;">${d.dateShort} · ${d.time}</span></div>
-      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:#111827;margin-top:7px;line-height:1.25;letter-spacing:-.01em;">${d.title}</div>
-      ${teamsLine}
-      <div style="display:flex;align-items:center;gap:6px;color:#6B7280;font-size:12.5px;font-weight:500;margin-top:6px;">${SVG.mapPin('#9CA3AF')}<span>${d.venue} · ${d.area}</span>${distanceBadge}</div>
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#111827;margin-top:7px;line-height:1.25;letter-spacing:-.01em;">${h.title}</div>
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;color:#374151;margin-top:5px;line-height:1.35;">${h.subtitle}</div>
       <div style="display:inline-flex;align-items:center;gap:5px;margin-top:11px;background:${AS};color:${AC};font-size:11px;font-weight:800;padding:5px 10px;border-radius:999px;"><span style="width:5px;height:5px;border-radius:50%;background:${AC};"></span>Venta en Catchtime</div>
     </div>
   </div>`;
@@ -515,27 +818,25 @@ function cardStd(e) {
 // Tarjeta editorial (imagen inmersiva, texto superpuesto)
 function cardEdit(e) {
   const d = dec(e);
-  const teamsLine = d.homeTeam && d.awayTeam
-    ? `<div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.75);">${d.homeTeam} <span style="opacity:.55;">vs</span> ${d.awayTeam}</div>`
-    : '';
-  const distanceLine = d.distanceText
-    ? `<span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#FCA5A5;background:rgba(239,68,68,.2);padding:3px 9px;border-radius:999px;white-space:nowrap;">📍 ${d.distanceText}</span>`
-    : '';
-  return `<div style="position:relative;width:100%;height:392px;border-radius:22px;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif;display:flex;flex-direction:column;justify-content:space-between;">
+  const h = cardHeadlines(d);
+  const statusBadge = cardStatusBadge(d, 'padding:5px 11px;');
+  return `<div class="home-card" data-event-open="${e.id}" style="position:relative;width:100%;height:392px;border-radius:22px;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;">
     ${cardVisual(d)}
     <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(17,24,39,.22) 0%,rgba(17,24,39,0) 32%,rgba(17,24,39,.55) 68%,rgba(17,24,39,.93) 100%);pointer-events:none;"></div>
-    <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:14px;">
-      <div style="background:#fff;color:#111827;font-weight:800;font-size:14px;padding:6px 13px;border-radius:999px;">${d.price}</div>
-      <button data-fav="${e.id}" style="width:38px;height:38px;border:none;border-radius:50%;background:rgba(255,255,255,.18);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:0;">${SVG.heart(d.heartFill, d.heartStroke, 19, e.id)}</button>
+    <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;padding:14px;gap:10px;">
+      <div style="max-width:calc(100% - 52px);">${cardPriceBlock(d, 'dark')}</div>
+      <button data-fav="${e.id}" style="width:38px;height:38px;border:none;border-radius:50%;background:rgba(255,255,255,.18);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:0;flex:none;">${SVG.heart(d.heartFill, d.heartStroke, 19, e.id)}</button>
     </div>
     <div style="position:relative;z-index:1;padding:16px 16px 18px;display:flex;flex-direction:column;gap:9px;">
-      <div style="display:inline-flex;align-self:flex-start;align-items:center;gap:6px;background:${d.statusBg};color:${d.statusColor};font-size:11px;font-weight:700;padding:5px 11px;border-radius:999px;backdrop-filter:blur(6px);"><span style="width:6px;height:6px;border-radius:50%;background:${d.dotColor};"></span>${d.statusText}</div>
-      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:23px;color:#fff;line-height:1.12;letter-spacing:-.02em;">${d.title}</div>
-      ${teamsLine}
-      <div style="display:flex;align-items:center;gap:14px;color:rgba(255,255,255,.85);font-size:12.5px;font-weight:600;flex-wrap:wrap;">
-        <span style="display:flex;align-items:center;gap:5px;">${SVG.cal('currentColor')}${d.dateShort}</span>
-        <span style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;">${SVG.mapPin('currentColor')}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.venue}</span></span>
-        ${distanceLine}
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        ${statusBadge}
+        ${cardDistanceBadge(d, 'dark')}
+      </div>
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:22px;color:#fff;line-height:1.12;letter-spacing:-.02em;">${h.title}</div>
+      <div style="font-size:14px;font-weight:700;color:rgba(255,255,255,.88);line-height:1.35;">${h.subtitle}</div>
+      <div style="display:flex;align-items:center;gap:14px;color:rgba(255,255,255,.72);font-size:12.5px;font-weight:600;flex-wrap:wrap;">
+        <span style="display:flex;align-items:center;gap:5px;">${SVG.cal('currentColor')}${d.dateShort} · ${d.time}</span>
+        ${!(d.homeTeam && d.awayTeam) ? `<span style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;">${SVG.mapPin('currentColor')}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.venue}</span></span>` : ''}
       </div>
       <div style="display:inline-flex;align-self:flex-start;align-items:center;gap:6px;margin-top:2px;background:rgba(255,255,255,.16);backdrop-filter:blur(6px);color:#fff;font-size:11px;font-weight:800;padding:5px 11px;border-radius:999px;"><span style="width:5px;height:5px;border-radius:50%;background:${AC};"></span>Venta en Catchtime</div>
     </div>
@@ -656,15 +957,18 @@ function searchResults(ids, query) {
 // Fila de ranking "trending"
 function trendRow(t) {
   const d = dec(EV[t.id]);
+  const h = cardHeadlines(d);
   const dirPath  = t.dir === 'up' ? 'M6 15l6-6 6 6' : t.dir === 'down' ? 'M6 9l6 6 6-6' : 'M5 12h14';
   const dirColor = t.dir === 'up' ? AC : '#9CA3AF';
-  return `<div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #F3F4F6;font-family:'Plus Jakarta Sans',sans-serif;">
+  return `<div data-event-open="${t.id}" style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #F3F4F6;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;">
     <div style="width:20px;text-align:center;font-family:'Sora',sans-serif;font-weight:800;font-size:17px;color:#111827;flex:none;">${t.rank}</div>
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${dirColor}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><path d="${dirPath}"></path></svg>
     <div style="position:relative;width:52px;height:52px;flex:none;border-radius:12px;overflow:hidden;"><div style="position:absolute;inset:0;background:${d.bg};"></div><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(17,24,39,0) 40%,rgba(17,24,39,.3));"></div></div>
     <div style="flex:1;min-width:0;">
-      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:14.5px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em;">${d.title}</div>
-      <div style="color:#9CA3AF;font-size:11.5px;font-weight:500;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.dateShort} · ${d.venue}</div>
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em;">${h.title}</div>
+      <div style="font-size:12.5px;font-weight:700;color:#374151;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h.subtitle}</div>
+      <div style="color:#9CA3AF;font-size:11px;font-weight:500;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.dateShort} · ${d.time}</div>
+      <div style="margin-top:4px;">${cardDistanceBadge(d, 'trend')}</div>
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none;">
       <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:14px;color:#111827;">${d.price}</span>

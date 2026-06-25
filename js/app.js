@@ -21,6 +21,7 @@ const state = {
   mapCat: new Set(),   // categorías activas en el filtro del mapa (vacío = todas)
   mapSelected: null,   // id del evento seleccionado (bottom sheet abierto)
   ticketDetail: null,  // id del evento cuya entrada se muestra en pantalla completa
+  eventDetail: null,   // id del evento cuyo detalle previo a la compra se muestra
   qrFullscreen: false, // QR expandido a pantalla completa sobre fondo negro
   userLocation: null,  // { lat, lng } — ubicación actual del usuario (solicitada una sola vez)
   // ── Perfil ──
@@ -527,7 +528,6 @@ function requestUserLocation() {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
       };
-      // Re-render para mostrar distancias en cards si estamos en home
       if (state.tab === 'home') render();
     },
     () => {},
@@ -725,8 +725,7 @@ function renderHomeSections() {
       <div style="margin:26px 0 6px;background:#111827;padding:22px 0 24px;">
         <div style="padding:0 20px;">
           <div style="display:inline-flex;align-items:center;gap:6px;background:${AS};color:${AC};font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:5px 11px;border-radius:999px;">Destacado · Deporte</div>
-          <div style="font-family:'Sora';font-weight:800;font-size:24px;color:#fff;margin-top:12px;letter-spacing:-.02em;line-height:1.12;">Noches grandes de fútbol</div>
-          <div style="color:rgba(255,255,255,.6);font-size:13.5px;margin-top:6px;line-height:1.45;max-width:300px;">Los partidos más esperados de la ciudad, con venta oficial dentro de Catchtime.</div>
+          <div style="color:rgba(255,255,255,.78);font-size:15px;font-weight:600;margin-top:12px;line-height:1.45;max-width:320px;">Los partidos más esperados de la ciudad, con venta oficial dentro de Catchtime.</div>
         </div>
         <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:16px 20px 2px;">${editRow(PREMIUM)}</div>
       </div>
@@ -771,13 +770,16 @@ function render() {
   const tickets   = ticketsTabView();
   const profile   = `${profileTabView()}${state.profilePanel ? profilePanelView() : ''}`;
   const overlays  = `${state.filtersOpen ? filterPanel(state.draftFilters) : ''}${state.locationOpen ? locationPanel(state.locationQuery) : ''}`;
-  const ticketDetailOpen  = state.tab === 'tickets' && !!state.ticketDetail;
+  const ticketDetailOpen  = !!state.ticketDetail;   // se abre desde la pestaña Entradas
+  const eventDetailOpen   = !!state.eventDetail;     // detalle de evento previo a la compra (cards, mapa, trending…)
   const profilePanelOpen  = state.tab === 'profile' && !!state.profilePanel;
   const screen = notificationsOpen
     ? notificationsScreenView()
     : modalOpen
     ? overlays
-    : ticketDetailOpen
+    : eventDetailOpen
+      ? eventDetailView()
+      : ticketDetailOpen
       ? ticketDetailView()
       : state.tab === 'discover'
         ? map
@@ -792,13 +794,13 @@ function render() {
   document.getElementById('app').innerHTML = screen;
 
   const navSlot = document.getElementById('nav-slot');
-  const showNav = !modalOpen && !notificationsOpen && !ticketDetailOpen && !profilePanelOpen;
+  const showNav = !modalOpen && !notificationsOpen && !ticketDetailOpen && !eventDetailOpen && !profilePanelOpen;
   if (navSlot) {
     navSlot.innerHTML = showNav ? bottomNav() : '';
     navSlot.setAttribute('aria-hidden', showNav ? 'false' : 'true');
   }
 
-  if (!modalOpen && state.tab === 'discover') {
+  if (!modalOpen && !eventDetailOpen && state.tab === 'discover') {
     requestAnimationFrame(() => ensureMapReady());
   } else {
     destroyMap();
@@ -881,6 +883,7 @@ function useCurrentLocation() {
   navigator.geolocation.getCurrentPosition(
     async pos => {
       const { latitude, longitude } = pos.coords;
+      state.userLocation = { lat: latitude, lng: longitude };
       let city = '';
       try {
         const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=es`);
@@ -939,6 +942,28 @@ function toggleDraftFilter(group, value) {
 }
 
 // ── Interacciones (delegación de eventos a nivel documento) ──────────────────
+// Toast efímero (demo): aviso inferior que desaparece solo.
+let toastTimer = null;
+function flashToast(text) {
+  let el = document.getElementById('app-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'app-toast';
+    el.style.cssText = 'position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(8px);z-index:60;background:#1A1A1A;color:#fff;font-family:\'Plus Jakarta Sans\',sans-serif;font-size:13.5px;font-weight:600;padding:13px 20px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.28);opacity:0;transition:opacity .2s ease,transform .2s ease;max-width:88%;text-align:center;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  requestAnimationFrame(() => {
+    el.style.opacity = '1';
+    el.style.transform = 'translateX(-50%) translateY(0)';
+  });
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-50%) translateY(8px)';
+  }, 2200);
+}
+
 document.addEventListener('click', e => {
   const favBtn = e.target.closest('[data-fav]');
   if (favBtn) {
@@ -960,9 +985,42 @@ document.addEventListener('click', e => {
       state.profilePanel = null;
       state.profileEditingName = false;
       state.ticketDetail = null;
+      state.eventDetail = null;
       state.qrFullscreen = false;
       render();
     }
+    return;
+  }
+
+  // ── Detalle de evento (previo a la compra) ──────────────────────────────────
+  const eventOpenBtn = e.target.closest('[data-event-open]');
+  if (eventOpenBtn) {
+    state.eventDetail = eventOpenBtn.dataset.eventOpen;
+    window.scrollTo(0, 0);
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-event-close]')) {
+    state.eventDetail = null;
+    render();
+    return;
+  }
+
+  const eventBuyBtn = e.target.closest('[data-event-buy]');
+  if (eventBuyBtn) {
+    flashToast('Compra de entradas — demo de Catchtime');
+    return;
+  }
+
+  const eventNotifyBtn = e.target.closest('[data-event-notify]');
+  if (eventNotifyBtn) {
+    flashToast('Te avisaremos cuando salgan a la venta');
+    return;
+  }
+
+  if (e.target.closest('[data-event-share]')) {
+    flashToast('Compartir evento — demo de Catchtime');
     return;
   }
 
@@ -1307,4 +1365,5 @@ window.addEventListener('resize', () => {
 });
 
 // ── Arranque ─────────────────────────────────────────────────────────────────
+requestUserLocation();
 render();
