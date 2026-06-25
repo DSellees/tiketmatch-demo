@@ -20,6 +20,20 @@ const state = {
   locationError: '',
   mapCat: new Set(),   // categorías activas en el filtro del mapa (vacío = todas)
   mapSelected: null,   // id del evento seleccionado (bottom sheet abierto)
+  ticketDetail: null,  // id del evento cuya entrada se muestra en pantalla completa
+  qrFullscreen: false, // QR expandido a pantalla completa sobre fondo negro
+  userLocation: null,  // { lat, lng } — ubicación actual del usuario (solicitada una sola vez)
+  // ── Perfil ──
+  profilePanel: null,
+  profileName: 'David Selles',
+  profileEditingName: false,
+  profileNotifs: { events: true, offers: true, reminders: true },
+  profileRating: 0,
+  profileRatingDone: false,
+  profileCats: new Set(['concert', 'festival']),
+  profileLang: 'Español',
+  profileContactSent: false,
+  profileFaqOpen: new Set(),
 };
 
 const MAP_DEFAULT = { center: [2.1734, 41.3851], zoom: 12.2 };
@@ -39,11 +53,12 @@ const AREA_CENTER = {
 
 const mapRuntime = {
   instance: null,
-  eventMarkers: [],     // marcadores DOM de cada evento (con su mini-card)
+  eventMarkers: [],       // marcadores DOM de cada evento (con su mini-card)
   mainMarker: null,
+  userLocationMarker: null, // marcador azul pulsante de la ubicación del usuario
   statusTimer: null,
   requestId: 0,
-  collisionRaf: null,   // rAF que agrupa el recálculo de colisiones al mover el mapa
+  collisionRaf: null,     // rAF que agrupa el recálculo de colisiones al mover el mapa
 };
 
 // ── Lógica de filtrado ───────────────────────────────────────────────────────
@@ -489,6 +504,30 @@ function destroyMap() {
   state.mapSelected = null;   // el bottom sheet no sobrevive al salir del mapa
 }
 
+// ── Solicita geolocalización del usuario (una sola vez, reutilizable en toda la app) ────
+function requestUserLocation() {
+  if (!navigator.geolocation || !window.isSecureContext) {
+    return;
+  }
+
+  if (state.userLocation) {
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      state.userLocation = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+      };
+      // Re-render para mostrar distancias en cards si estamos en home
+      if (state.tab === 'home') render();
+    },
+    () => {},
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+  );
+}
+
 function ensureMapReady() {
   if (state.tab !== 'discover') return;
   const mount = document.getElementById('map-canvas');
@@ -501,6 +540,11 @@ function ensureMapReady() {
 
   if (mapRuntime.instance) {
     mapRuntime.instance.resize();
+    // Si ya estamos en el mapa, solicita la ubicación del usuario
+    requestUserLocation();
+    if (state.userLocation) {
+      addUserLocationMarker();
+    }
     return;
   }
 
@@ -515,7 +559,12 @@ function ensureMapReady() {
   mapRuntime.instance.addControl(new maplibregl.AttributionControl({ compact: true }));
 
   mapRuntime.instance.on('load', () => {
+    requestUserLocation();
     buildEventMarkers();
+    // Si la ubicación ya se obtuvo, añade el marcador
+    if (state.userLocation) {
+      addUserLocationMarker();
+    }
   });
 
   // recalcula qué cards caben mientras se mueve/zoom el mapa
@@ -525,6 +574,38 @@ function ensureMapReady() {
 
   // tocar el fondo del mapa cierra el bottom sheet
   mapRuntime.instance.on('click', () => deselectMapEvent());
+}
+
+// ── Añade un marcador azul pulsante en la ubicación del usuario ────
+function addUserLocationMarker() {
+  if (!mapRuntime.instance || !state.userLocation) return;
+
+  const el = document.createElement('div');
+  el.style.width = '24px';
+  el.style.height = '24px';
+  el.style.borderRadius = '50%';
+  el.style.background = '#3B82F6';
+  el.style.border = '3px solid #fff';
+  el.style.boxShadow = '0 0 0 6px rgba(59, 130, 246, 0.2)';
+  el.style.animation = 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite';
+
+  if (!document.getElementById('pulse-animation')) {
+    const style = document.createElement('style');
+    style.id = 'pulse-animation';
+    style.innerHTML = `@keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.2); }
+      50% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0.1); }
+    }`;
+    document.head.appendChild(style);
+  }
+
+  if (mapRuntime.userLocationMarker) {
+    mapRuntime.userLocationMarker.remove();
+  }
+
+  mapRuntime.userLocationMarker = new maplibregl.Marker({ element: el })
+    .setLngLat([state.userLocation.lng, state.userLocation.lat])
+    .addTo(mapRuntime.instance);
 }
 
 async function searchPlaceOnMap(rawQuery) {
@@ -688,13 +769,28 @@ function render() {
     </div>
     ${bottomNav()}`;
 
-  const map = `${mapTabView()}${bottomNav()}`;
-  const overlays = `${state.filtersOpen ? filterPanel(state.draftFilters) : ''}${state.locationOpen ? locationPanel(state.locationQuery) : ''}`;
+  const map       = `${mapTabView()}${bottomNav()}`;
+  const favorites = `${favoritesTabView()}${bottomNav()}`;
+  const profile   = `${profileTabView()}${bottomNav()}`;
+  const tickets   = `${ticketsTabView()}${bottomNav()}`;
+  const overlays  = `${state.filtersOpen ? filterPanel(state.draftFilters) : ''}${state.locationOpen ? locationPanel(state.locationQuery) : ''}`;
+  const profilePanelOpen  = state.tab === 'profile' && !!state.profilePanel;
+  const ticketDetailOpen  = state.tab === 'tickets' && !!state.ticketDetail;
   const screen = modalOpen
     ? overlays
-    : state.tab === 'discover'
-      ? map
-      : home;
+    : ticketDetailOpen
+      ? ticketDetailView()
+      : profilePanelOpen
+        ? profilePanelView()
+        : state.tab === 'discover'
+          ? map
+          : state.tab === 'favorites'
+            ? favorites
+            : state.tab === 'tickets'
+              ? tickets
+              : state.tab === 'profile'
+                ? profile
+                : home;
 
   document.getElementById('app').innerHTML = screen;
 
@@ -722,8 +818,13 @@ function render() {
     }
   }
 
+  if (state.profileEditingName) {
+    const inp = document.querySelector('[data-profile-name-input]');
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  }
+
   // bloquea el scroll del fondo mientras hay una pantalla modal abierta
-  document.body.style.overflow = modalOpen ? 'hidden' : '';
+  document.body.style.overflow = (modalOpen || ticketDetailOpen) ? 'hidden' : '';
 }
 
 function openLocation() {
@@ -820,9 +921,6 @@ document.addEventListener('click', e => {
       svg.setAttribute('fill',   faved ? AC : 'rgba(0,0,0,0)');
       svg.setAttribute('stroke', faved ? AC : '#ffffff');
     });
-    const cnt = state.fav.size;
-    const badge = document.querySelector('[data-badge]');
-    if (badge) { badge.textContent = cnt; badge.style.display = cnt > 0 ? 'flex' : 'none'; }
     return;
   }
 
@@ -831,8 +929,141 @@ document.addEventListener('click', e => {
     const nextTab = tabBtn.dataset.tab;
     if (nextTab !== state.tab) {
       state.tab = nextTab;
+      state.profilePanel = null;
+      state.profileEditingName = false;
+      state.ticketDetail = null;
+      state.qrFullscreen = false;
       render();
     }
+    return;
+  }
+
+  // ── Entradas: detalle ────────────────────────────────────────────────────────
+  const ticketOpenBtn = e.target.closest('[data-ticket-open]');
+  if (ticketOpenBtn) {
+    state.ticketDetail = ticketOpenBtn.dataset.ticketOpen;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-ticket-close]')) {
+    state.ticketDetail = null;
+    state.qrFullscreen = false;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-qr-open]')) {
+    state.qrFullscreen = true;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-qr-close]')) {
+    state.qrFullscreen = false;
+    render();
+    return;
+  }
+
+  const mapsBtn = e.target.closest('[data-ticket-maps]');
+  if (mapsBtn) {
+    window.open('https://maps.google.com/maps?q=' + mapsBtn.dataset.ticketMaps, '_blank');
+    return;
+  }
+
+  const calBtn = e.target.closest('[data-ticket-cal]');
+  if (calBtn) {
+    window.open(decodeURIComponent(calBtn.dataset.ticketCal), '_blank');
+    return;
+  }
+
+  // ── Perfil: sub-paneles ──────────────────────────────────────────────────────
+  const profilePanelBtn = e.target.closest('[data-profile-panel]');
+  if (profilePanelBtn) {
+    state.profilePanel = profilePanelBtn.dataset.profilePanel;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-profile-back]')) {
+    state.profilePanel = null;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-profile-name-tap]')) {
+    state.profileEditingName = true;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-profile-open-location]')) {
+    openLocation();
+    return;
+  }
+
+  const notifToggle = e.target.closest('[data-notif-toggle]');
+  if (notifToggle) {
+    const key = notifToggle.dataset.notifToggle;
+    state.profileNotifs[key] = !state.profileNotifs[key];
+    render();
+    return;
+  }
+
+  const faqToggle = e.target.closest('[data-faq-toggle]');
+  if (faqToggle) {
+    const i = Number(faqToggle.dataset.faqToggle);
+    state.profileFaqOpen.has(i) ? state.profileFaqOpen.delete(i) : state.profileFaqOpen.add(i);
+    render();
+    return;
+  }
+
+  const langPick = e.target.closest('[data-lang-pick]');
+  if (langPick) {
+    state.profileLang = langPick.dataset.langPick;
+    state.profilePanel = null;
+    render();
+    return;
+  }
+
+  const catPref = e.target.closest('[data-cat-pref]');
+  if (catPref) {
+    const cat = catPref.dataset.catPref;
+    state.profileCats.has(cat) ? state.profileCats.delete(cat) : state.profileCats.add(cat);
+    render();
+    return;
+  }
+
+  const rateStar = e.target.closest('[data-rate-star]');
+  if (rateStar) {
+    state.profileRating = Number(rateStar.dataset.rateStar);
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-rate-submit]')) {
+    if (state.profileRating > 0) { state.profileRatingDone = true; render(); }
+    return;
+  }
+
+  if (e.target.closest('[data-contact-send]')) {
+    state.profileContactSent = true;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-profile-save]')) {
+    const nameInput = document.querySelector('[data-edit-name]');
+    if (nameInput && nameInput.value.trim()) state.profileName = nameInput.value.trim();
+    state.profilePanel = null;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-logout-confirm]')) {
+    state.profilePanel = null;
+    state.tab = 'home';
+    render();
     return;
   }
 
@@ -961,6 +1192,25 @@ document.addEventListener('focusin', e => {
 document.addEventListener('focusout', e => {
   if (e.target.matches('[data-search]')) state.searchFocused = false;
   if (e.target.matches('[data-location-search]')) state.locationFocused = false;
+  if (e.target.matches('[data-profile-name-input]')) {
+    const val = e.target.value.trim();
+    if (val) state.profileName = val;
+    state.profileEditingName = false;
+    render();
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (!e.target.matches('[data-profile-name-input]')) return;
+  if (e.key === 'Enter') {
+    const val = e.target.value.trim();
+    if (val) state.profileName = val;
+    state.profileEditingName = false;
+    render();
+  } else if (e.key === 'Escape') {
+    state.profileEditingName = false;
+    render();
+  }
 });
 
 window.addEventListener('resize', () => {
