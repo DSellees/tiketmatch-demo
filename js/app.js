@@ -22,6 +22,11 @@ const state = {
   mapSelected: null,   // id del evento seleccionado (bottom sheet abierto)
   ticketDetail: null,  // id del evento cuya entrada se muestra en pantalla completa
   eventDetail: null,   // id del evento cuyo detalle previo a la compra se muestra
+  descExpanded: false, // descripción del detalle de evento expandida ("Leer más")
+  purchaseFlow: null,       // null | 'seats' | 'summary' | 'payment' | 'processing' | 'success'
+  purchaseEventId: null,    // id del evento en proceso de compra
+  purchaseSeat: null,       // butaca seleccionada (ej: 'B4')
+  purchasedTickets: [],     // ids de eventos comprados en esta sesión
   qrFullscreen: false, // QR expandido a pantalla completa sobre fondo negro
   userLocation: null,  // { lat, lng } — ubicación actual del usuario (solicitada una sola vez)
   // ── Perfil ──
@@ -67,6 +72,12 @@ const mapRuntime = {
   statusTimer: null,
   requestId: 0,
   collisionRaf: null,     // rAF que agrupa el recálculo de colisiones al mover el mapa
+};
+
+const detailMapRuntime = {
+  instance: null,
+  marker: null,
+  eventId: null,
 };
 
 // ── Lógica de filtrado ───────────────────────────────────────────────────────
@@ -512,6 +523,63 @@ function destroyMap() {
   state.mapSelected = null;   // el bottom sheet no sobrevive al salir del mapa
 }
 
+function destroyDetailMap() {
+  if (detailMapRuntime.marker) {
+    detailMapRuntime.marker.remove();
+    detailMapRuntime.marker = null;
+  }
+  if (detailMapRuntime.instance) {
+    detailMapRuntime.instance.remove();
+    detailMapRuntime.instance = null;
+  }
+  detailMapRuntime.eventId = null;
+}
+
+function ensureDetailMapReady() {
+  if (!state.eventDetail) return;
+  const e = EV[state.eventDetail];
+  if (!e) return;
+
+  const mount = document.getElementById('event-detail-map');
+  if (!mount) return;
+
+  if (!window.maplibregl || typeof maplibregl.Map !== 'function') return;
+
+  if (detailMapRuntime.instance && detailMapRuntime.eventId === e.id) {
+    detailMapRuntime.instance.resize();
+    return;
+  }
+
+  destroyDetailMap();
+
+  const lngLat = eventLngLat(e);
+  detailMapRuntime.eventId = e.id;
+  detailMapRuntime.instance = new maplibregl.Map({
+    container: mount,
+    style: mapStyle(),
+    center: lngLat,
+    zoom: 13.4,
+    cooperativeGestures: true,
+    attributionControl: false,
+  });
+
+  detailMapRuntime.instance.addControl(new maplibregl.AttributionControl({ compact: true }));
+
+  detailMapRuntime.instance.on('load', () => {
+    if (!detailMapRuntime.instance) return;
+
+    const root = document.createElement('div');
+    root.className = 'ev-marker';
+    root.innerHTML = '<span class="ev-dot"></span>';
+
+    detailMapRuntime.marker = new maplibregl.Marker({ element: root, anchor: 'center' })
+      .setLngLat(lngLat)
+      .addTo(detailMapRuntime.instance);
+
+    detailMapRuntime.instance.resize();
+  });
+}
+
 // ── Solicita geolocalización del usuario (una sola vez, reutilizable en toda la app) ────
 function requestUserLocation() {
   if (!navigator.geolocation || !window.isSecureContext) {
@@ -707,6 +775,13 @@ function renderHomeSections() {
   const editRow = ids => ids.map(id => `<div style="flex:0 0 auto;width:240px;">${cardEdit(EV[id])}</div>`).join('');
 
   return `
+      <!-- Oportunidades Catchtime (<24 h) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;margin:22px 0 12px;">
+        <div style="font-family:'Sora';font-weight:700;font-size:19px;color:#111827;letter-spacing:-.02em;">Oportunidades Catchtime</div>
+        <span style="display:inline-flex;align-items:center;gap:5px;color:${AC};font-size:10.5px;font-weight:800;background:${AS};padding:4px 9px;border-radius:999px;">&lt;24 H</span>
+      </div>
+      <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;">${stdRow(OPORTUNOS)}</div>
+
       <!-- Populares ahora -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;margin:22px 0 12px;">
         <div style="font-family:'Sora';font-weight:700;font-size:19px;color:#111827;letter-spacing:-.02em;">Populares ahora</div>
@@ -747,7 +822,47 @@ function renderHomeSections() {
       <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;">${stdRow(NEARBY)}</div>`;
 }
 
+// ── Simulación en vivo del precio en el detalle de evento ────────────────────
+let priceAnimTimer = null;
+function stopPriceAnim() {
+  if (priceAnimTimer) { clearInterval(priceAnimTimer); priceAnimTimer = null; }
+}
+function startPriceAnim(id) {
+  stopPriceAnim();
+  const svg = document.getElementById('pc-svg-' + id);
+  if (!svg) return;
+
+  const init = +svg.dataset.init;
+  const base = +svg.dataset.cur;
+  const maxCur = Math.floor(init * 0.40);
+  const band = Math.max(1, Math.round(base * 0.06));
+  let cur = base;
+
+  const priceEl = document.getElementById('pc-price-' + id);
+  const saveEl  = document.getElementById('pc-save-' + id);
+
+  function paint() {
+    if (priceEl) priceEl.textContent = '€' + cur;
+    if (saveEl)  saveEl.textContent = 'Ahorras €' + Math.max(0, init - cur);
+  }
+
+  priceAnimTimer = setInterval(() => {
+    const dir = cur > base ? (Math.random() < 0.72 ? -1 : 1)
+              : cur < base ? (Math.random() < 0.72 ? 1 : -1)
+              : (Math.random() < 0.5 ? -1 : 1);
+    const mag = 1;
+    let next = cur + dir * mag;
+    if (next > maxCur) next = maxCur;
+    if (next > base + band) next = base + band;
+    if (next < base - band) next = base - band;
+    cur = next;
+    paint();
+  }, 24000);
+}
+
 function render() {
+  destroyDetailMap();
+
   const results = isSearchMode() ? filterEvents(state.appliedFilters, state.query) : [];
   const body = isSearchMode()
     ? `<div style="margin-top:18px;">${searchResults(results, state.query)}</div>`
@@ -770,6 +885,7 @@ function render() {
   const tickets   = ticketsTabView();
   const profile   = `${profileTabView()}${state.profilePanel ? profilePanelView() : ''}`;
   const overlays  = `${state.filtersOpen ? filterPanel(state.draftFilters) : ''}${state.locationOpen ? locationPanel(state.locationQuery) : ''}`;
+  const purchaseOpen      = !!state.purchaseFlow;
   const ticketDetailOpen  = !!state.ticketDetail;   // se abre desde la pestaña Entradas
   const eventDetailOpen   = !!state.eventDetail;     // detalle de evento previo a la compra (cards, mapa, trending…)
   const profilePanelOpen  = state.tab === 'profile' && !!state.profilePanel;
@@ -777,11 +893,13 @@ function render() {
     ? notificationsScreenView()
     : modalOpen
     ? overlays
-    : eventDetailOpen
-      ? eventDetailView()
-      : ticketDetailOpen
-      ? ticketDetailView()
-      : state.tab === 'discover'
+    : purchaseOpen
+      ? purchaseFlowView()
+      : eventDetailOpen
+        ? eventDetailView()
+        : ticketDetailOpen
+        ? ticketDetailView()
+        : state.tab === 'discover'
         ? map
         : state.tab === 'favorites'
           ? favorites
@@ -794,7 +912,7 @@ function render() {
   document.getElementById('app').innerHTML = screen;
 
   const navSlot = document.getElementById('nav-slot');
-  const showNav = !modalOpen && !notificationsOpen && !ticketDetailOpen && !eventDetailOpen && !profilePanelOpen;
+  const showNav = !modalOpen && !notificationsOpen && !purchaseOpen && !ticketDetailOpen && !eventDetailOpen && !profilePanelOpen;
   if (navSlot) {
     navSlot.innerHTML = showNav ? bottomNav() : '';
     navSlot.setAttribute('aria-hidden', showNav ? 'false' : 'true');
@@ -804,6 +922,14 @@ function render() {
     requestAnimationFrame(() => ensureMapReady());
   } else {
     destroyMap();
+  }
+
+  // Simulación en vivo del precio y mini-mapa del detalle de evento.
+  if (eventDetailOpen) {
+    startPriceAnim(state.eventDetail);                       // los elementos ya existen
+    requestAnimationFrame(() => ensureDetailMapReady());     // el mapa necesita layout
+  } else {
+    stopPriceAnim();
   }
 
   if (state.searchFocused) {
@@ -839,7 +965,86 @@ function render() {
   }
 
   // bloquea el scroll del fondo mientras hay una pantalla modal abierta
-  document.body.style.overflow = (modalOpen || ticketDetailOpen || profilePanelOpen || notificationsOpen) ? 'hidden' : '';
+  document.body.style.overflow = (modalOpen || purchaseOpen || ticketDetailOpen || profilePanelOpen || notificationsOpen) ? 'hidden' : '';
+
+  // Auto-avanza de "processing" a "success" tras simular el pago
+  if (state.purchaseFlow === 'processing') {
+    setTimeout(() => {
+      if (!Array.isArray(state.purchasedTickets)) state.purchasedTickets = [];
+      if (state.purchaseEventId && !state.purchasedTickets.includes(state.purchaseEventId)) {
+        state.purchasedTickets.push(state.purchaseEventId);
+      }
+      state.purchaseFlow = 'success';
+      render();
+    }, 2200);
+  }
+
+  syncEventUrl();
+}
+
+// ── Compartir evento (Web Share API + enlace directo) ────────────────────────
+function eventShareUrl(eventId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('event', eventId);
+  url.hash = '';
+  return url.toString();
+}
+
+function syncEventUrl() {
+  const url = new URL(window.location.href);
+  if (state.eventDetail && EV[state.eventDetail]) {
+    url.searchParams.set('event', state.eventDetail);
+  } else {
+    url.searchParams.delete('event');
+  }
+  const next = url.pathname + url.search + url.hash;
+  if (window.location.pathname + window.location.search + window.location.hash !== next) {
+    history.replaceState(null, '', next);
+  }
+}
+
+function readEventFromUrl() {
+  const id = new URLSearchParams(window.location.search).get('event');
+  if (id && EV[id]) {
+    state.eventDetail = id;
+    state.descExpanded = false;
+  }
+}
+
+async function copyEventLink(eventId) {
+  const url = eventShareUrl(eventId);
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      flashToast('Enlace copiado al portapapeles');
+      return;
+    }
+  } catch (_) {}
+  flashToast(url);
+}
+
+async function shareEvent(eventId) {
+  const e = EV[eventId];
+  if (!e) return;
+
+  const h = cardHeadlines(dec(e));
+  const url = eventShareUrl(eventId);
+  const payload = {
+    title: `${h.title} · Catchtime`,
+    text: `${h.title} — ${e.dateShort} · ${e.time} · ${e.venue}`,
+    url,
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(payload);
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+    }
+  }
+
+  await copyEventLink(eventId);
 }
 
 function openLocation() {
@@ -996,6 +1201,7 @@ document.addEventListener('click', e => {
   const eventOpenBtn = e.target.closest('[data-event-open]');
   if (eventOpenBtn) {
     state.eventDetail = eventOpenBtn.dataset.eventOpen;
+    state.descExpanded = false;
     window.scrollTo(0, 0);
     render();
     return;
@@ -1003,13 +1209,72 @@ document.addEventListener('click', e => {
 
   if (e.target.closest('[data-event-close]')) {
     state.eventDetail = null;
+    state.descExpanded = false;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-desc-toggle]')) {
+    state.descExpanded = !state.descExpanded;
     render();
     return;
   }
 
   const eventBuyBtn = e.target.closest('[data-event-buy]');
   if (eventBuyBtn) {
-    flashToast('Compra de entradas — demo de Catchtime');
+    state.purchaseFlow = 'seats';
+    state.purchaseEventId = eventBuyBtn.dataset.eventBuy || state.eventDetail;
+    state.purchaseSeat = null;
+    render();
+    return;
+  }
+
+  // ── Flujo de compra ─────────────────────────────────────────────────────────
+  const seatBtn = e.target.closest('[data-seat-pick]');
+  if (seatBtn) {
+    state.purchaseSeat = seatBtn.dataset.seatPick;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-purchase-next]')) {
+    if (state.purchaseFlow === 'seats') state.purchaseFlow = 'summary';
+    else if (state.purchaseFlow === 'summary') state.purchaseFlow = 'payment';
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-purchase-back]')) {
+    if (state.purchaseFlow === 'seats') { state.purchaseFlow = null; state.purchaseEventId = null; }
+    else if (state.purchaseFlow === 'summary') state.purchaseFlow = 'seats';
+    else if (state.purchaseFlow === 'payment') state.purchaseFlow = 'summary';
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-purchase-pay]')) {
+    state.purchaseFlow = 'processing';
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-purchase-view-ticket]')) {
+    const eid = state.purchaseEventId;
+    state.purchaseFlow = null;
+    state.purchaseEventId = null;
+    state.eventDetail = null;
+    state.tab = 'tickets';
+    state.ticketDetail = eid;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-purchase-done]')) {
+    state.purchaseFlow = null;
+    state.purchaseEventId = null;
+    state.eventDetail = null;
+    state.tab = 'home';
+    render();
     return;
   }
 
@@ -1020,7 +1285,9 @@ document.addEventListener('click', e => {
   }
 
   if (e.target.closest('[data-event-share]')) {
-    flashToast('Compartir evento — demo de Catchtime');
+    const shareBtn = e.target.closest('[data-event-share]');
+    const id = shareBtn?.dataset.eventShare || state.eventDetail;
+    if (id) shareEvent(id);
     return;
   }
 
@@ -1365,5 +1632,6 @@ window.addEventListener('resize', () => {
 });
 
 // ── Arranque ─────────────────────────────────────────────────────────────────
+readEventFromUrl();
 requestUserLocation();
 render();

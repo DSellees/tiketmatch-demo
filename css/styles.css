@@ -255,6 +255,116 @@ button{ font-family:inherit; cursor:pointer; }
   inset:0;
 }
 
+/* card de ubicación en el detalle del evento */
+.event-location-card{
+  margin-top:14px;
+  background:#fff;
+  border:1px solid #F0F0F1;
+  border-radius:20px;
+  overflow:hidden;
+  box-shadow:0 2px 16px rgba(17,24,39,.05);
+}
+
+.event-location-card__head{
+  padding:16px 16px 14px;
+}
+
+.event-location-card__label{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin-bottom:10px;
+}
+
+.event-location-card__venue{
+  font-family:'Sora',sans-serif;
+  font-size:17px;
+  font-weight:700;
+  color:#0F172A;
+  letter-spacing:-.02em;
+  line-height:1.2;
+}
+
+.event-location-card__street{
+  margin-top:6px;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:14px;
+  font-weight:600;
+  color:#374151;
+  line-height:1.35;
+}
+
+.event-location-card__city{
+  margin-top:3px;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:13px;
+  font-weight:500;
+  color:#9CA3AF;
+  line-height:1.35;
+}
+
+.event-location-card__map{
+  border-top:1px solid #F3F4F6;
+  border-bottom:1px solid #F3F4F6;
+  background:#F3F4F6;
+}
+
+.event-detail-map{
+  width:100%;
+  height:clamp(200px,46vw,260px);
+  background:#F3F4F6;
+  touch-action:none;
+}
+
+.event-detail-map .maplibregl-canvas{
+  outline:none;
+}
+
+.event-detail-map .maplibregl-ctrl-bottom-right{
+  margin:0 6px 6px 0;
+}
+
+.event-location-card__foot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 16px;
+}
+
+.event-location-card__distance{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:12.5px;
+  font-weight:600;
+  color:#6B7280;
+}
+
+.event-location-card__cta{
+  flex:none;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  padding:10px 15px;
+  border-radius:12px;
+  background:var(--accent-soft);
+  color:var(--accent);
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:13px;
+  font-weight:700;
+  text-decoration:none;
+  white-space:nowrap;
+}
+
 #map-overlay-top{
   position:absolute;
   top:0; left:0; right:0;

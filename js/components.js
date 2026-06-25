@@ -58,6 +58,7 @@ function dec(e) {
     statusBg:    e.status === 'last' ? AC : st.bg,
     statusColor: st.color,
     dotColor:    st.dot,
+    portadaFit:  e.portadaFit || PORTADA_FIT[e.cat] || 'center center',
   };
   const ref = state.userLocation || AREA_COORDS[state.location] || AREA_COORDS.Barcelona;
   const km = haversineDistance(ref.lat, ref.lng, e.lat, e.lng);
@@ -90,9 +91,10 @@ function cardVisual(d, heightPx) {
 
   const overlay = `<div style="position:absolute;inset:0;background:radial-gradient(130% 90% at 50% -10%,rgba(255,255,255,.08),transparent 55%),linear-gradient(180deg,rgba(17,24,39,0) 45%,rgba(17,24,39,.34));pointer-events:none;"></div>`;
 
-  // Imagen de portada real: ocupa todo el fondo, escudos encima
+  // Imagen de portada real: ocupa todo el fondo, encuadre por categoría
+  const fit = d.portadaFit || 'center center';
   const bgImg = d.portada
-    ? `<img src="${d.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;" aria-hidden="true">`
+    ? `<img src="${d.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:${fit};" aria-hidden="true">`
     : '';
 
   if (hasMatch) {
@@ -117,7 +119,7 @@ function cardVisual(d, heightPx) {
   return `<div style="${style}">
     ${bgImg}
     ${overlay}
-    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'SF Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.34);">${d.label}</div>
+    ${d.portada ? '' : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'SF Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.34);">${d.label}</div>`}
   </div>`;
 }
 
@@ -173,20 +175,27 @@ function ticketCard(e) {
 
 // Pestaña principal de entradas
 function ticketsTabView() {
-  const upcoming = ['e2','e6','e7','e9'].map(id => EV[id]).filter(Boolean);
-  const past     = ['e1','e4','e8','e10'].map(id => EV[id]).filter(Boolean);
+  const upcoming = (state.purchasedTickets || []).map(id => EV[id]).filter(Boolean);
+  const past     = [];
   const section = (title, events) => events.length === 0 ? '' :
     `<div style="margin-bottom:28px;">
        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:12px;color:#9CA3AF;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;">${title}</div>
        ${events.map(e => ticketCard(e)).join('')}
      </div>`;
+  const isEmpty = upcoming.length === 0 && past.length === 0;
   return `<div id="content">
     <div style="padding:8px 20px 0;">
       <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:22px;color:#111827;letter-spacing:-.03em;line-height:50px;">Mis entradas</div>
     </div>
     <div style="padding:12px 16px 36px;">
-      ${section('Próximas', upcoming)}
-      ${section('Pasadas', past)}
+      ${isEmpty
+        ? `<div style="display:flex;flex-direction:column;align-items:center;padding:52px 20px 0;text-align:center;gap:14px;">
+            <div style="width:64px;height:64px;border-radius:50%;background:#F6F6F7;display:flex;align-items:center;justify-content:center;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4V7a1 1 0 0 1 1-1Z"></path><path d="M14 6v12"></path></svg></div>
+            <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:18px;color:#111827;">Aún sin entradas</div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:#9CA3AF;line-height:1.55;max-width:260px;">Cuando compres una entrada aparecerá aquí. Explora los eventos y encuentra tu próximo plan.</div>
+            <button type="button" data-tab="home" style="height:48px;padding:0 26px;border:none;border-radius:999px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 14px rgba(255,87,34,.28);margin-top:4px;">Explorar eventos</button>
+          </div>`
+        : `${section('Próximas', upcoming)}${section('Pasadas', past)}`}
     </div>
   </div>`;
 }
@@ -195,8 +204,10 @@ function ticketsTabView() {
 // Usa datos reales si existen (priceHistory/initialPrice/currentPrice/...),
 // si no, deriva una curva descendente determinista a partir de priceNum.
 function priceTrend(e) {
-  const cur  = e.currentPrice || e.priceNum;
-  const init = e.initialPrice || Math.round(cur * 1.55);
+  const init = e.initialPrice || Math.round((e.currentPrice || e.priceNum) / 0.35);
+  let cur  = e.currentPrice || e.priceNum;
+  const maxCur = Math.floor(init * 0.40);
+  if (cur > maxCur) cur = maxCur;
   const seed = e.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
 
   let pts;
@@ -223,70 +234,151 @@ function priceTrend(e) {
   };
 }
 
-// SVG de la gráfica precio/tiempo: línea + área + puntos, tendencia descendente.
-function priceChartSvg(pts, gradId) {
-  const gid = gradId || 'ptgrad';
-  const W = 320, H = 128, padX = 8, padTop = 14, padBot = 14;
-  const min = Math.min(...pts), max = Math.max(...pts);
-  const range = (max - min) || 1;
-  const n = pts.length;
-  const X = i => padX + (W - 2 * padX) * (i / (n - 1));
-  const Y = p => padTop + (H - padTop - padBot) * (1 - (p - min) / range);
+// SVG de la gráfica precio/tiempo con ejes (precio €/hora). La línea tiene una
+// animación de avance continuo (marcha de guiones, tipo "cargando"). Nada se sale
+// del recuadro: la geometría es fija y el precio se anima aparte (en el panel).
+function liveChartSvg(e) {
+  const t = priceTrend(e);
+  const G = '#16A34A';                       // verde "bajando"
+  const sid = e.id;
+  const W = 340, H = 158;
+  const padL = 40, padR = 16, padT = 14, padB = 28;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
 
-  const line = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p).toFixed(1)}`).join(' ');
-  const area = `M${X(0).toFixed(1)},${Y(pts[0]).toFixed(1)} ` +
+  const pts = t.pts.slice();
+  const dataMin = Math.min(...pts), dataMax = Math.max(...pts);
+  const lo = Math.floor(dataMin * 0.9);
+  const hi = Math.ceil(dataMax * 1.06);
+  const range = (hi - lo) || 1;
+  const n = pts.length;
+  const X = i => padL + plotW * (i / (n - 1));
+  const Y = p => padT + plotH * (1 - (Math.max(lo, Math.min(hi, p)) - lo) / range);
+  const curY = Y(t.cur);
+
+  const linePts = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p).toFixed(1)}`).join(' ');
+  const areaD = `M${padL},${Y(pts[0]).toFixed(1)} ` +
     pts.map((p, i) => `L${X(i).toFixed(1)},${Y(p).toFixed(1)}`).join(' ') +
-    ` L${X(n - 1).toFixed(1)},${H - padBot} L${X(0).toFixed(1)},${H - padBot} Z`;
-  const dots = pts.map((p, i) => {
-    const last = i === n - 1;
-    return `<circle cx="${X(i).toFixed(1)}" cy="${Y(p).toFixed(1)}" r="${last ? 4.6 : 2.4}" fill="${last ? AC : '#fff'}" stroke="${AC}" stroke-width="${last ? 2.4 : 1.6}"/>`;
+    ` L${(W - padR).toFixed(1)},${(padT + plotH).toFixed(1)} L${padL},${(padT + plotH).toFixed(1)} Z`;
+
+  // Ejes Y (3 ticks de precio) + gridlines suaves
+  const yticks = [hi, Math.round((hi + lo) / 2), lo];
+  const yAxis = yticks.map(v => {
+    const y = Y(v).toFixed(1);
+    return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#EEF0F2" stroke-width="1"/>
+            <text x="${padL - 7}" y="${(+y + 3).toFixed(1)}" text-anchor="end" font-family="'Plus Jakarta Sans',sans-serif" font-size="9.5" font-weight="600" fill="#A8AEB8">${v}€</text>`;
   }).join('');
 
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto;overflow:visible;">
+  // Ejes X (3 ticks de hora) terminando en AHORA
+  const [hh, mm] = e.time.split(':').map(Number);
+  const fmt = h => String(((h % 24) + 24) % 24).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  const yB = (padT + plotH + 16).toFixed(1);
+  const xLabels = [
+    [padL, fmt(hh - 4), '#A8AEB8', '400', 'start'],
+    [padL + plotW / 2, fmt(hh - 2), '#A8AEB8', '400', 'middle'],
+    [W - padR, 'AHORA', G, '800', 'end'],
+  ].map(([x, txt, col, w, anchor]) =>
+    `<text x="${(+x).toFixed(1)}" y="${yB}" text-anchor="${anchor}" font-family="'Plus Jakarta Sans',sans-serif" font-size="9.5" font-weight="${w}" fill="${col}">${txt}</text>`
+  ).join('');
+
+  return `<svg id="pc-svg-${sid}" viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto;overflow:hidden;"
+      data-pchart="${sid}" data-init="${t.init}" data-cur="${t.cur}">
     <defs>
-      <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="${AC}" stop-opacity="0.22"/>
-        <stop offset="100%" stop-color="${AC}" stop-opacity="0"/>
+      <linearGradient id="pcgrad-${sid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${G}" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="${G}" stop-opacity="0"/>
       </linearGradient>
     </defs>
-    <path d="${area}" fill="url(#${gid})"/>
-    <polyline points="${line}" fill="none" stroke="${AC}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-    ${dots}
+    ${yAxis}
+    ${xLabels}
+    <path d="${areaD}" fill="url(#pcgrad-${sid})"/>
+    <!-- línea base tenue -->
+    <polyline points="${linePts}" fill="none" stroke="${G}" stroke-opacity="0.26" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- línea de avance continuo (marcha de guiones tipo cargando) -->
+    <polyline points="${linePts}" fill="none" stroke="${G}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="15 11" style="animation:pcFlow .85s linear infinite;"/>
+    <!-- punto final fijo -->
+    <circle cx="${(W - padR).toFixed(1)}" cy="${curY.toFixed(1)}" r="4.2" fill="${G}" stroke="#fff" stroke-width="2"/>
   </svg>`;
 }
 
-// Panel reutilizable: tarjeta de evolución de precio con gráfica (insertar donde haga falta)
+// Panel reutilizable: tarjeta de evolución de precio con gráfica + simulación en vivo.
 function priceChartPanel(e, opts) {
   opts = opts || {};
   const t = priceTrend(e);
   const isSoon = e.status === 'soon';
-  const availLine = isSoon ? 'Aún no a la venta' : `${t.avail} entradas disponibles`;
-  const gradId = 'ptgrad-' + e.id;
-  const heading = opts.hideTitle ? '' :
-    `<div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#1A1A1A;letter-spacing:-.01em;margin:24px 0 10px;">Evolución del precio</div>`;
+  const sid = e.id;
+  const savings = t.init - t.cur;
 
-  return `${heading}
-    <div class="price-chart-panel" style="background:#fff;border-radius:20px;padding:16px;box-shadow:0 2px 16px rgba(17,24,39,.05);">
-      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:4px;">
-        <div>
-          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:600;color:#9CA3AF;margin-bottom:3px;">Precio actual</div>
-          <div style="display:flex;align-items:flex-end;gap:9px;">
-            <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:30px;color:#1A1A1A;letter-spacing:-.03em;line-height:.9;">€${t.cur}</span>
-            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:15px;font-weight:600;color:#B0B0B0;text-decoration:line-through;margin-bottom:3px;">€${t.init}</span>
-          </div>
-        </div>
-        <span style="display:inline-flex;align-items:center;gap:4px;background:#ECFDF5;color:#16A34A;font-size:12px;font-weight:800;padding:5px 11px;border-radius:999px;">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 17V9M17 17H9"></path></svg>−${t.dropPct}%
+  return `
+    <style>
+      @keyframes pcPulse { 0%{transform:scale(.6);opacity:.4} 70%{transform:scale(1.9);opacity:0} 100%{opacity:0} }
+      @keyframes pcBlink { 0%,100%{opacity:1} 50%{opacity:.3} }
+      @keyframes pcFlow { from{stroke-dashoffset:0} to{stroke-dashoffset:-26} }
+    </style>
+    <div class="price-chart-panel" style="background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 2px 20px rgba(17,24,39,.07);margin-top:14px;">
+
+      <!-- cabecera: título + CATCH TIME -->
+      <div style="padding:16px 18px 0;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-family:'Sora',sans-serif;font-weight:700;font-size:14.5px;color:#0F172A;letter-spacing:-.01em;">Evolución del precio</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;background:${AS};color:${AC};font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:800;letter-spacing:.06em;padding:4px 10px;border-radius:999px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:${AC};animation:pcBlink 1.2s ease-in-out infinite;"></span>CATCH TIME
         </span>
       </div>
-      <div style="margin:10px 0 6px;">${priceChartSvg(t.pts, gradId)}</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid #F1F1F2;">
-        <span style="display:inline-flex;align-items:center;gap:6px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:600;color:#374151;">
-          <span style="width:6px;height:6px;border-radius:50%;background:${isSoon ? '#9CA3AF' : '#16A34A'};"></span>${availLine}
+
+      <!-- precio actual a la derecha (oscila) + tachado + ahorro a la izquierda -->
+      <div style="padding:10px 18px 4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;color:#C4C4C4;text-decoration:line-through;line-height:1;">€${t.init}</span>
+            <span id="pc-save-${sid}" style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:700;color:#16A34A;line-height:1;">Ahorras €${savings}</span>
+          </div>
+          <div id="pc-price-${sid}" style="font-family:'Sora',sans-serif;font-weight:800;font-size:52px;color:#111827;letter-spacing:-.045em;line-height:.86;font-variant-numeric:tabular-nums;">€${t.cur}</div>
+        </div>
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;color:#9CA3AF;margin-top:8px;">
+          ${isSoon ? 'Aún no a la venta' : `${t.avail} entradas disponibles`}
+        </div>
+      </div>
+
+      <!-- gráfica con ejes -->
+      <div style="padding:6px 14px 4px;">${liveChartSvg(e)}</div>
+
+      <!-- footer -->
+      <div style="padding:10px 18px 15px;border-top:1px solid #F1F1F2;display:flex;align-items:center;justify-content:space-between;">
+        <span style="display:inline-flex;align-items:center;gap:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:700;color:#16A34A;">
+          <span style="width:14px;height:3px;border-radius:2px;background:#16A34A;display:inline-block;"></span>Histórico real
         </span>
-        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:500;color:#A3A3A3;">Actualizado ${t.updated}</span>
+        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:500;color:#B0B0B0;">Seguimiento Catch Time</span>
       </div>
     </div>`;
+}
+
+// Card de ubicación: dirección exacta + mapa interactivo integrado en el diseño.
+function eventMapCard(e, d) {
+  const addr = eventAddress(e);
+  const maps = (Number.isFinite(e.lat) && Number.isFinite(e.lng))
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr.mapsQuery)}&query_place_id=&center=${e.lat},${e.lng}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr.mapsQuery)}`;
+  const pinIco = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${AC}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>`;
+
+  return `
+    <article class="event-location-card">
+      <div class="event-location-card__head">
+        <div class="event-location-card__label">${pinIco}<span>Ubicación</span></div>
+        <div class="event-location-card__venue">${e.venue}</div>
+        <div class="event-location-card__street">${addr.street}</div>
+        <div class="event-location-card__city">${addr.cityLine}</div>
+      </div>
+      <div class="event-location-card__map">
+        <div id="event-detail-map" class="event-detail-map" data-event-id="${e.id}" aria-label="Mapa de ${e.venue}"></div>
+      </div>
+      <div class="event-location-card__foot">
+        <div class="event-location-card__distance">${SVG.mapPin('#9CA3AF', 14)}<span>${d.distanceLabel}</span></div>
+        <a href="${maps}" target="_blank" rel="noopener noreferrer" class="event-location-card__cta">
+          ${pinIco}
+          Cómo llegar
+        </a>
+      </div>
+    </article>`;
 }
 
 // Ciudad del evento (deriva de la zona/recinto; por defecto Barcelona)
@@ -297,12 +389,12 @@ function eventCity(e) {
 
 // Copys de descripción por categoría (demo)
 const EVENT_DESC = {
-  football:   'Vive el partido desde dentro: ambiente de estadio, afición entregada y noventa minutos de máxima tensión deportiva.',
-  basket:     'La mejor cita del baloncesto en cancha, con un ambiente eléctrico de principio a fin y jugadas de altísimo nivel.',
-  balonmano:  'Velocidad, intensidad y emoción en un derbi de balonmano que no querrás perderte.',
-  concert:    'Una noche de música en directo con un sonido cuidado y una puesta en escena envolvente.',
-  festival:   'Varios escenarios, los mejores artistas del momento y una experiencia de festival inolvidable.',
-  experience: 'Una experiencia única pensada para disfrutar al máximo, con plazas limitadas y un trato cercano.',
+  football:   'Vive el partido desde dentro: ambiente de estadio, afición entregada y noventa minutos de máxima tensión deportiva. Llega con tiempo para disfrutar de la previa, los cánticos y la entrada al campo de los equipos. Una cita imprescindible para cualquier aficionado al fútbol que quiera sentir la emoción en directo.',
+  basket:     'La mejor cita del baloncesto en cancha, con un ambiente eléctrico de principio a fin y jugadas de altísimo nivel. Disfruta de la intensidad de cada posesión, los mates y los tiros decisivos a pocos metros de la pista. Una experiencia trepidante que se vive distinto desde la grada.',
+  balonmano:  'Velocidad, intensidad y emoción en un derbi de balonmano que no querrás perderte. Defensas férreas, contraataques fulgurantes y un pabellón entregado durante todo el encuentro. Vive el deporte de equipo más vibrante en primera fila.',
+  concert:    'Una noche de música en directo con un sonido cuidado y una puesta en escena envolvente. Disfruta de los grandes temas y de momentos únicos pensados para emocionar al público de principio a fin. Una experiencia sonora y visual que recordarás durante mucho tiempo.',
+  festival:   'Varios escenarios, los mejores artistas del momento y una experiencia de festival inolvidable. Música sin pausa, zonas de descanso, food trucks y un ambiente único para vivir con amigos. Prepárate para una jornada cargada de energía de la mañana a la noche.',
+  experience: 'Una experiencia única pensada para disfrutar al máximo, con plazas limitadas y un trato cercano. Cada detalle está cuidado para que vivas un momento especial e irrepetible. Reserva tu plaza y déjate sorprender.',
 };
 
 // Vista de DETALLE DE EVENTO (previa a la compra) — hero grande + info + CTA
@@ -312,7 +404,6 @@ function eventDetailView() {
   const d   = dec(e);
   const t   = priceTrend(e);
   const h   = cardHeadlines(d);
-  const city = eventCity(e);
   const isSoon = e.status === 'soon';
   const isLast = e.status === 'last';
 
@@ -355,118 +446,78 @@ function eventDetailView() {
     ticket: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4V7a1 1 0 0 1 1-1Z"></path></svg>`,
   };
 
-  const participants = (d.homeTeam && d.awayTeam)
-    ? `<div style="background:#fff;border:1px solid #F0F0F1;border-radius:18px;padding:16px;margin-top:14px;display:flex;align-items:center;justify-content:space-around;">
-         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;">
-           <img src="assets/crests/${d.homeCrest}.png" alt="${d.homeTeam}" style="width:52px;height:52px;object-fit:contain;" onerror="this.style.display='none'">
-           <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:700;color:#1A1A1A;text-align:center;line-height:1.2;">${d.homeTeam}</span>
-         </div>
-         <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:14px;color:#C7C9CE;flex:none;padding:0 6px;">VS</span>
-         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;">
-           <img src="assets/crests/${d.awayCrest}.png" alt="${d.awayTeam}" style="width:52px;height:52px;object-fit:contain;" onerror="this.style.display='none'">
-           <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:700;color:#1A1A1A;text-align:center;line-height:1.2;">${d.awayTeam}</span>
-         </div>
-       </div>`
-    : '';
+  const city = eventCity(e);
+  const catLabel = { football: 'Fútbol', basket: 'Baloncesto', balonmano: 'Balonmano', concert: 'Concierto', festival: 'Festival', experience: 'Experiencia' };
 
   const sectionTitle = (txt) =>
     `<div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#1A1A1A;letter-spacing:-.01em;margin:24px 0 10px;">${txt}</div>`;
 
-  const ctaLabel  = isSoon ? 'Avísame cuando salga' : (isLast ? 'Comprar · últimas entradas' : 'Comprar entrada');
-  const statusBadge = cardStatusBadge(d, 'padding:5px 11px;');
+  const ctaLabel  = isSoon ? 'Avísame cuando salga' : (isLast ? 'Últimas entradas' : 'Comprar entrada');
+  const isFav = state.fav.has(e.id);
 
-  return `<div style="position:fixed;inset:0;background:#F5F5F6;z-index:30;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  // Descripción con límite de caracteres + "Leer más"
+  const fullDesc = EVENT_DESC[e.cat] || '';
+  const DESC_MAX = 150;
+  const isLongDesc = fullDesc.length > DESC_MAX;
+  const shownDesc = (!isLongDesc || state.descExpanded)
+    ? fullDesc
+    : fullDesc.slice(0, DESC_MAX).replace(/\s+\S*$/, '') + '… ';
+
+  // Botón circular flotante (back / share) — alto contraste sobre imagen y blanco
+  const roundBtn = (attr, svg, label) =>
+    `<button type="button" ${attr} aria-label="${label}" style="width:42px;height:42px;border-radius:50%;border:none;background:rgba(17,24,39,.82);box-shadow:0 4px 16px rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center;cursor:pointer;">${svg}</button>`;
+  const backSvg  = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>`;
+  const shareSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>`;
+  const sect = (txt) => `<div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:#0F172A;letter-spacing:-.01em;margin:24px 0 9px;">${txt}</div>`;
+
+  return `<div style="position:fixed;inset:0;background:#fff;z-index:30;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+
+    <!-- ── BARRA SUPERIOR FIJA (back + share) ── -->
+    <div style="position:fixed;top:0;left:0;right:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;pointer-events:none;">
+      <div style="pointer-events:auto;">${roundBtn('data-event-close', backSvg, 'Volver')}</div>
+      <div style="pointer-events:auto;">${roundBtn(`data-event-share="${e.id}"`, shareSvg, 'Compartir')}</div>
+    </div>
 
     <!-- ── HERO ── -->
-    <div style="position:relative;width:100%;height:clamp(400px,62vh,560px);overflow:hidden;background:${d.bg};">
-      ${e.portada ? `<img src="${e.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;" aria-hidden="true">` : ''}
+    <div style="position:relative;width:100%;height:clamp(240px,44vh,340px);overflow:hidden;background:${d.bg};">
+      ${e.portada ? `<img src="${e.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:${d.portadaFit};" aria-hidden="true">` : ''}
       <div style="position:absolute;inset:0;background:radial-gradient(ellipse 120% 70% at 50% 22%,rgba(255,255,255,.08),transparent 58%),linear-gradient(180deg,rgba(17,24,39,.28) 0%,rgba(17,24,39,0) 28%,rgba(17,24,39,.22) 55%,rgba(17,24,39,.92) 100%);"></div>
-
-      <!-- Barra superior: volver + acciones -->
-      <div style="position:absolute;top:0;left:0;right:0;z-index:2;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;">
-        <button type="button" data-event-close style="width:40px;height:40px;border-radius:50%;border:none;background:rgba(17,24,39,.38);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
-        </button>
-        <div style="display:flex;gap:10px;">
-          <button type="button" data-event-share style="width:40px;height:40px;border-radius:50%;border:none;background:rgba(17,24,39,.38);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-          </button>
-          <button type="button" data-fav="${e.id}" style="width:40px;height:40px;border-radius:50%;border:none;background:rgba(17,24,39,.38);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;">${SVG.heart(d.heartFill, d.heartStroke, 19, e.id)}</button>
-        </div>
-      </div>
-
-      <div style="position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;padding:72px 22px 36px;box-sizing:border-box;">
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0;">
-          ${heroVisual}
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;">
-          ${statusBadge ? `<div style="margin-bottom:10px;">${statusBadge}</div>` : ''}
-          <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:clamp(28px,7.5vw,40px);color:#fff;letter-spacing:-.03em;line-height:1.08;text-shadow:0 3px 20px rgba(0,0,0,.65);max-width:100%;">${h.title}</div>
-          ${e.competition ? `<div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:700;color:rgba(255,255,255,.58);margin-top:7px;letter-spacing:.08em;text-transform:uppercase;">${e.competition}</div>` : ''}
-          <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin-top:16px;">
-            ${[
-              [`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M3 10h18"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect></svg>`, e.dateShort],
-              [`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>`, e.time + ' · Puertas ' + opening],
-              [`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>`, e.venue],
-              [`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"></path></svg>`, city],
-            ].map(([ico, val]) => `<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(17,24,39,.46);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.13);color:rgba(255,255,255,.92);font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:999px;white-space:nowrap;">${ico}${val}</span>`).join('')}
-          </div>
-        </div>
+      <div style="position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;padding:72px 22px 40px;box-sizing:border-box;">
+        ${heroVisual}
       </div>
     </div>
 
     <!-- ── HOJA DE CONTENIDO ── -->
-    <div style="position:relative;margin-top:-26px;background:#F5F5F6;border-radius:28px 28px 0 0;padding:8px 18px 130px;">
-      <div style="display:flex;justify-content:center;padding:8px 0 4px;"><div style="width:38px;height:4px;border-radius:2px;background:#D8D8DA;"></div></div>
+    <div style="position:relative;margin-top:-26px;background:#fff;border-radius:28px 28px 0 0;padding:8px 20px 132px;">
+      <div style="display:flex;justify-content:center;padding:8px 0 16px;"><div style="width:38px;height:4px;border-radius:2px;background:#D8D8DA;"></div></div>
 
-      <!-- Participantes (solo deportes) -->
-      ${participants}
+      <!-- Categoría -->
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:800;color:${AC};letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;">${catLabel[e.cat] || e.cat}</div>
 
-      <!-- ── GRÁFICA DE PRECIO / TIEMPO ── -->
+      <!-- Título -->
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:26px;color:#0F172A;letter-spacing:-.03em;line-height:1.12;margin-bottom:10px;">${h.title}</div>
+
+      <!-- Fecha + recinto -->
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:500;color:#6B7280;">${e.dateShort} · ${e.time} &nbsp;·&nbsp; en ${e.venue}</div>
+
+      <!-- Descripción con título + leer más -->
+      ${sect('Descripción')}
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:400;color:#374151;line-height:1.65;">${shownDesc}${isLongDesc ? `<button type="button" data-desc-toggle style="border:none;background:none;padding:0;margin-left:5px;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;color:${AC};cursor:pointer;">${state.descExpanded ? 'Leer menos' : 'Leer más'}</button>` : ''}</div>
+
+      <!-- ── PRECIO Y GRÁFICA ── -->
       ${priceChartPanel(e)}
 
-      <!-- ── DESCRIPCIÓN ── -->
-      ${sectionTitle('Sobre el evento')}
-      <div style="background:#fff;border-radius:20px;padding:16px 16px 18px;box-shadow:0 2px 16px rgba(17,24,39,.05);">
-        <p style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:500;color:#4B5563;line-height:1.6;margin:0 0 14px;">${EVENT_DESC[e.cat] || ''}</p>
-        <div style="display:flex;flex-direction:column;gap:9px;">
-          ${['Acceso al recinto incluido', isSoon ? 'Reserva con aviso de salida a la venta' : 'Reserva garantizada al instante', 'Entrada digital en tu móvil'].map(txt => `
-            <div style="display:flex;align-items:center;gap:9px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${AC}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><path d="M20 6 9 17l-5-5"></path></svg>
-              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;color:#374151;">${txt}</span>
-            </div>`).join('')}
-        </div>
-      </div>
-
-      <!-- ── INFORMACIÓN ADICIONAL ── -->
-      ${sectionTitle('Información práctica')}
-      <div style="background:#fff;border-radius:20px;padding:4px 16px;box-shadow:0 2px 16px rgba(17,24,39,.05);">
-        ${infoRow(ic.door, 'Apertura de puertas', opening + ' (1 h antes)')}
-        ${infoRow(ic.timer, 'Duración aproximada', durationByCat[e.cat] || '≈ 2 h')}
-        ${infoRow(ic.user, 'Edad mínima', ageByCat[e.cat] || 'Todos los públicos')}
-        <div style="display:flex;align-items:center;gap:13px;padding:13px 0;">
-          <span style="width:38px;height:38px;border-radius:11px;background:#F6F6F7;display:flex;align-items:center;justify-content:center;flex:none;">${ic.ticket}</span>
-          <div style="flex:1;min-width:0;">
-            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:500;color:#9CA3AF;">Política de entradas</div>
-            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14.5px;font-weight:700;color:#1A1A1A;line-height:1.25;margin-top:1px;">Nominales · cambios hasta 48 h antes</div>
-          </div>
-        </div>
-      </div>
+      <!-- ── UBICACIÓN ── -->
+      ${eventMapCard(e, d)}
     </div>
 
-    <!-- ── BARRA DE COMPRA STICKY ── -->
-    <div style="position:fixed;left:0;right:0;bottom:0;z-index:35;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);border-top:1px solid #ECECEE;padding:12px 18px calc(12px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:14px;">
-      <div style="flex:none;">
-        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;color:#9CA3AF;line-height:1;">Desde</div>
-        <div style="display:flex;align-items:baseline;gap:6px;margin-top:3px;">
-          <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:23px;color:#1A1A1A;letter-spacing:-.02em;line-height:1;">€${t.cur}</span>
-          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;color:#B0B0B0;text-decoration:line-through;">€${t.init}</span>
-        </div>
-      </div>
-      <button type="button" ${isSoon ? 'data-event-notify' : 'data-event-buy'}="${e.id}" style="flex:1;height:52px;border:none;border-radius:15px;background:${isSoon ? '#1A1A1A' : AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:-.01em;">
-        ${isSoon ? '' : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4V7a1 1 0 0 1 1-1Z"></path></svg>`}
-        ${ctaLabel}
+    <!-- ── FOOTER: botón único + favorito ── -->
+    <div style="position:fixed;left:0;right:0;bottom:0;z-index:35;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-top:1px solid #ECECEE;padding:12px 18px calc(12px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;">
+      <button type="button" ${isSoon ? 'data-event-notify' : 'data-event-buy'}="${e.id}" style="flex:1;height:56px;border:none;border-radius:999px;background:${isSoon ? '#1A1A1A' : AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;letter-spacing:-.01em;box-shadow:0 6px 18px ${isSoon ? 'rgba(17,24,39,.18)' : 'rgba(255,87,34,.32)'};">
+        ${isSoon ? '' : `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4V7a1 1 0 0 1 1-1Z"></path></svg>`}
+        <span>${ctaLabel}</span>
       </button>
+      <button type="button" data-fav="${e.id}" aria-label="Guardar en favoritos" style="width:56px;height:56px;border-radius:50%;border:1.5px solid ${isFav ? AC : '#E5E7EB'};background:${isFav ? AS : '#fff'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;transition:all .18s;">${SVG.heart(isFav ? AC : 'rgba(0,0,0,0)', isFav ? AC : '#9CA3AF', 23, e.id)}</button>
     </div>
   </div>`;
 }
@@ -585,6 +636,254 @@ function ticketDetailView() {
     </div>
     <div style="height:env(safe-area-inset-bottom,0px);min-height:12px;"></div>
   </div>`;
+}
+
+// ── Flujo de compra de entrada ───────────────────────────────────────────────
+
+function pfRow(label, value) {
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;color:#6B7280;">${label}</span>
+    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;color:#111827;">${value}</span>
+  </div>`;
+}
+
+function pfField(label, value, mono) {
+  return `<div style="margin-bottom:12px;">
+    <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:5px;">${label}</div>
+    <div style="border:1.5px solid #E9EAEC;border-radius:12px;padding:12px 14px;font-family:${mono ? "'Sora',sans-serif" : "'Plus Jakarta Sans',sans-serif"};font-size:14px;${mono ? 'letter-spacing:.06em;' : ''}color:#111827;background:#FAFAFA;">${value}</div>
+  </div>`;
+}
+
+function pfHeader(title) {
+  return `<div style="display:flex;align-items:center;padding:calc(14px + env(safe-area-inset-top)) 18px 14px;background:#fff;border-bottom:1px solid #F1F1F2;position:sticky;top:0;z-index:10;box-sizing:border-box;">
+    <button type="button" data-purchase-back style="width:38px;height:38px;border-radius:50%;border:none;background:#F6F6F7;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </button>
+    <div style="flex:1;text-align:center;font-family:'Sora',sans-serif;font-weight:700;font-size:17px;color:#111827;">${title}</div>
+    <div style="width:38px;flex:none;"></div>
+  </div>`;
+}
+
+function purchaseSeatView(e) {
+  const rows = ['A','B','C','D','E'];
+  const cols = 8;
+  const seed = e.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const isTkn = (r, c) => ((seed * (r * cols + c + 7) * 1103515245 + 12345) & 0x7FFFFFFF) % 100 < 38;
+
+  let grid = '';
+  rows.forEach((rl, r) => {
+    let row = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#9CA3AF;width:20px;text-align:center;flex:none;">${rl}</div>`;
+    for (let c = 0; c < cols; c++) {
+      const sid = rl + (c + 1);
+      const tk = isTkn(r, c);
+      const sl = state.purchaseSeat === sid;
+      const bg = tk ? '#EFEFF1' : sl ? AC : '#E8F5E9';
+      const bd = sl ? ('2.5px solid ' + AC) : tk ? '2px solid #E5E7EB' : '2px solid #A5D6A7';
+      row += `<button type="button" ${tk ? 'disabled' : ('data-seat-pick="' + sid + '"')} style="width:clamp(36px,9.2vw,44px);height:clamp(30px,7.8vw,36px);border-radius:8px 8px 5px 5px;border:${bd};background:${bg};cursor:${tk ? 'default' : 'pointer'};flex:none;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">${sl ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>' : ''}</button>`;
+    }
+    grid += row + '</div>';
+  });
+
+  const sel = state.purchaseSeat;
+  const catLbl = {football:'CAMPO',basket:'CANCHA',balonmano:'PISTA',concert:'ESCENARIO',festival:'ESCENARIO',experience:'ESPACIO'}[e.cat] || 'CAMPO';
+
+  return `<div style="position:fixed;inset:0;background:#F9FAFB;z-index:50;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+    ${pfHeader('Selecciona tu butaca')}
+    <div style="margin:18px 18px 14px;background:linear-gradient(135deg,#1E293B,#334155);border-radius:16px;padding:18px 20px;text-align:center;">
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:800;color:rgba(255,255,255,.45);letter-spacing:.2em;">${catLbl}</div>
+      <div style="width:72px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin:8px auto 0;"></div>
+    </div>
+    <div style="padding:12px 14px 8px;display:flex;flex-direction:column;align-items:center;">${grid}</div>
+    <div style="display:flex;gap:20px;padding:8px 18px 16px;justify-content:center;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#6B7280;"><div style="width:18px;height:14px;border-radius:4px 4px 3px 3px;background:#E8F5E9;border:2px solid #A5D6A7;"></div>Libre</div>
+      <div style="display:flex;align-items:center;gap:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#6B7280;"><div style="width:18px;height:14px;border-radius:4px 4px 3px 3px;background:${AC};border:2px solid ${AC};"></div>Tuya</div>
+      <div style="display:flex;align-items:center;gap:7px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#6B7280;"><div style="width:18px;height:14px;border-radius:4px 4px 3px 3px;background:#EFEFF1;border:2px solid #E5E7EB;"></div>Ocupada</div>
+    </div>
+    ${sel
+      ? `<div style="margin:0 18px 110px;background:#fff;border-radius:16px;padding:13px 16px;box-shadow:0 2px 12px rgba(0,0,0,.06);display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#9CA3AF;margin-bottom:3px;">Butaca seleccionada</div>
+            <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:#111827;">Fila ${sel.charAt(0)} · Asiento ${sel.slice(1)}</div>
+          </div>
+          <div style="background:${AS};color:${AC};font-family:'Sora',sans-serif;font-weight:800;font-size:14px;padding:5px 13px;border-radius:999px;">${e.price}</div>
+        </div>`
+      : `<div style="text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;color:#B0B0B0;padding:0 18px 110px;">Toca una butaca disponible</div>`}
+    <div style="position:fixed;left:0;right:0;bottom:0;z-index:10;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-top:1px solid #ECECEE;padding:12px 18px calc(12px + env(safe-area-inset-bottom));">
+      <button type="button" ${sel ? 'data-purchase-next' : 'disabled'} style="width:100%;height:56px;border:none;border-radius:999px;background:${sel ? AC : '#D1D5DB'};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;cursor:${sel ? 'pointer' : 'default'};">${sel ? 'Continuar' : 'Selecciona una butaca'}</button>
+    </div>
+  </div>`;
+}
+
+function purchaseSummaryView(e) {
+  const d = dec(e);
+  const h = cardHeadlines(d);
+  const fee = Math.round(e.priceNum * 0.08);
+  const total = e.priceNum + fee;
+  const catName = {football:'Fútbol',basket:'Baloncesto',balonmano:'Balonmano',concert:'Concierto',festival:'Festival',experience:'Experiencia'}[e.cat] || e.cat;
+  const sel = state.purchaseSeat || '';
+
+  return `<div style="position:fixed;inset:0;background:#F9FAFB;z-index:50;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+    ${pfHeader('Resumen del pedido')}
+    <div style="padding:16px 18px calc(120px + env(safe-area-inset-bottom)) 18px;">
+      <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,.07);margin-bottom:14px;">
+        <div style="background:${d.bg};height:76px;position:relative;overflow:hidden;">
+          ${e.portada ? `<img src="${e.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:${d.portadaFit};" aria-hidden="true">` : ''}
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,rgba(0,0,0,.55));"></div>
+        </div>
+        <div style="padding:12px 16px 14px;">
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:800;color:${AC};letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px;">${catName}</div>
+          <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#111827;margin-bottom:5px;">${h.title}</div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#6B7280;">${e.dateShort} · ${e.time} · ${e.venue}</div>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:16px;padding:14px 16px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.05);">
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:700;color:#9CA3AF;letter-spacing:.07em;text-transform:uppercase;margin-bottom:10px;">Localidad</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#111827;">Fila ${sel.charAt(0)} · Asiento ${sel.slice(1)}</div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#9CA3AF;margin-top:2px;">Entrada general</div>
+          </div>
+          <div style="background:${AS};color:${AC};font-family:'Sora',sans-serif;font-weight:800;font-size:14px;padding:5px 12px;border-radius:999px;">${e.price}</div>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:16px;padding:14px 16px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.05);">
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:700;color:#9CA3AF;letter-spacing:.07em;text-transform:uppercase;margin-bottom:12px;">Precio</div>
+        ${pfRow('Precio base', e.price)}
+        ${pfRow('Tasas de servicio (8%)', '€' + fee)}
+        <div style="border-top:1px solid #F1F1F2;margin:10px 0;"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#111827;">Total</span>
+          <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:18px;color:#111827;">€${total}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:9px;align-items:flex-start;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px;"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+        <p style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#9CA3AF;line-height:1.55;margin:0;">Entrada no reembolsable. En caso de cancelación recibirás el importe íntegro en 5-7 días hábiles.</p>
+      </div>
+    </div>
+    <div style="position:fixed;left:0;right:0;bottom:0;z-index:10;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-top:1px solid #ECECEE;padding:12px 18px calc(12px + env(safe-area-inset-bottom));">
+      <button type="button" data-purchase-next style="width:100%;height:56px;border:none;border-radius:999px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;cursor:pointer;box-shadow:0 6px 18px rgba(255,87,34,.3);">Ir al pago · €${total}</button>
+    </div>
+  </div>`;
+}
+
+function purchasePaymentView(e) {
+  const fee = Math.round(e.priceNum * 0.08);
+  const total = e.priceNum + fee;
+  const cardName = (state.profileName || 'TITULAR').toUpperCase();
+
+  return `<div style="position:fixed;inset:0;background:#F9FAFB;z-index:50;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+    ${pfHeader('Método de pago')}
+    <div style="padding:16px 18px calc(120px + env(safe-area-inset-bottom)) 18px;">
+      <div style="background:linear-gradient(135deg,#1E293B 0%,#374151 60%,#1E293B 100%);border-radius:22px;padding:22px 20px 20px;margin-bottom:20px;position:relative;overflow:hidden;">
+        <div style="position:absolute;top:-40px;right:-20px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.04);"></div>
+        <div style="position:absolute;bottom:-30px;left:20px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.04);"></div>
+        <div style="width:34px;height:26px;border-radius:5px;background:linear-gradient(135deg,#D4AF37,#F5E47A);margin-bottom:20px;position:relative;z-index:1;"></div>
+        <div style="font-family:'Sora',sans-serif;font-weight:600;font-size:17px;color:#fff;letter-spacing:.18em;margin-bottom:18px;position:relative;z-index:1;">4532 1234 5678 9012</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;position:relative;z-index:1;">
+          <div><div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:8.5px;color:rgba(255,255,255,.4);letter-spacing:.12em;margin-bottom:3px;">TITULAR</div><div style="font-family:'Sora',sans-serif;font-size:12.5px;font-weight:600;color:#fff;">${cardName}</div></div>
+          <div><div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:8.5px;color:rgba(255,255,255,.4);letter-spacing:.12em;margin-bottom:3px;">CADUCA</div><div style="font-family:'Sora',sans-serif;font-size:12.5px;font-weight:600;color:#fff;">12/28</div></div>
+          <div style="font-family:'Sora',sans-serif;font-size:18px;font-weight:800;color:#fff;letter-spacing:.06em;font-style:italic;">VISA</div>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:20px;padding:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);margin-bottom:14px;">
+        ${pfField('Número de tarjeta', '4532 1234 5678 9012', true)}
+        ${pfField('Titular', state.profileName || 'MPV Demo', false)}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div><div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:5px;">Caducidad</div><div style="border:1.5px solid #E9EAEC;border-radius:12px;padding:12px 14px;font-family:'Sora',sans-serif;font-size:14px;color:#111827;background:#FAFAFA;">12/28</div></div>
+          <div><div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:5px;">CVV</div><div style="border:1.5px solid #E9EAEC;border-radius:12px;padding:12px 14px;font-family:'Sora',sans-serif;font-size:14px;color:#111827;background:#FAFAFA;">•••</div></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:9px;align-items:center;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        <p style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#6B7280;margin:0;">Pago seguro · Encriptación SSL 256 bits</p>
+      </div>
+    </div>
+    <div style="position:fixed;left:0;right:0;bottom:0;z-index:10;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-top:1px solid #ECECEE;padding:12px 18px calc(12px + env(safe-area-inset-bottom));">
+      <button type="button" data-purchase-pay style="width:100%;height:56px;border:none;border-radius:999px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;cursor:pointer;box-shadow:0 6px 18px rgba(255,87,34,.3);display:flex;align-items:center;justify-content:center;gap:10px;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"></rect><path d="M2 10h20"></path></svg>
+        Pagar €${total}
+      </button>
+    </div>
+  </div>`;
+}
+
+function purchaseProcessingView() {
+  return `<div style="position:fixed;inset:0;background:#fff;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:0 30px;text-align:center;">
+    <style>@keyframes ppSpin{to{transform:rotate(360deg)}}</style>
+    <div style="width:68px;height:68px;border-radius:50%;border:4px solid ${AS};border-top-color:${AC};animation:ppSpin .85s linear infinite;flex:none;"></div>
+    <div>
+      <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:20px;color:#111827;margin-bottom:7px;">Procesando tu compra</div>
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:#6B7280;line-height:1.55;">Confirmando tu entrada con el sistema de pago…</div>
+    </div>
+  </div>`;
+}
+
+function purchaseSuccessView(e) {
+  const d = dec(e);
+  const h = cardHeadlines(d);
+  const fee = Math.round(e.priceNum * 0.08);
+  const total = e.priceNum + fee;
+  const sel = state.purchaseSeat || '';
+  const qr = qrSvg(e.id + 'ok', 96, '#111827');
+
+  return `<div style="position:fixed;inset:0;background:#fff;z-index:50;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+    <style>
+      @keyframes psCheck{from{stroke-dashoffset:60}to{stroke-dashoffset:0}}
+      @keyframes psBounce{0%{transform:scale(.4);opacity:0}65%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+      @keyframes psUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+    </style>
+    <div style="padding:calc(40px + env(safe-area-inset-top)) 0 26px;display:flex;justify-content:center;animation:psBounce .45s ease-out;">
+      <div style="width:76px;height:76px;border-radius:50%;background:#ECFDF5;display:flex;align-items:center;justify-content:center;">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><path d="M8 18l6 7L28 11" stroke="#16A34A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="60" style="animation:psCheck .5s ease-out .2s both;"/></svg>
+      </div>
+    </div>
+    <div style="text-align:center;padding:0 24px 20px;animation:psUp .4s ease-out .1s both;">
+      <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:24px;color:#111827;letter-spacing:-.02em;margin-bottom:6px;">¡Entrada confirmada!</div>
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:#6B7280;line-height:1.55;">Tu entrada para <strong style="color:#111827;">${h.title}</strong> está lista en tu wallet.</div>
+    </div>
+    <div style="margin:0 18px 20px;border-radius:24px;box-shadow:0 8px 32px rgba(17,24,39,.12);overflow:hidden;animation:psUp .4s ease-out .2s both;">
+      <div style="background:${d.bg};height:86px;position:relative;overflow:hidden;">
+        ${e.portada ? `<img src="${e.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:${d.portadaFit};" aria-hidden="true">` : ''}
+        <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,rgba(0,0,0,.65));"></div>
+        <div style="position:absolute;bottom:10px;left:14px;right:14px;">
+          <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:14px;color:#fff;">${h.title}</div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:rgba(255,255,255,.82);">${e.dateShort} · ${e.time} · ${e.venue}</div>
+        </div>
+      </div>
+      <div style="background:#fff;position:relative;height:22px;display:flex;align-items:center;">
+        <div style="position:absolute;left:-11px;width:22px;height:22px;border-radius:50%;background:#F9FAFB;"></div>
+        <div style="flex:1;border-top:1.5px dashed #E5E7EB;margin:0 6px;"></div>
+        <div style="position:absolute;right:-11px;width:22px;height:22px;border-radius:50%;background:#F9FAFB;"></div>
+      </div>
+      <div style="background:#fff;padding:12px 14px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#9CA3AF;margin-bottom:2px;">Localidad</div>
+          <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:13.5px;color:#111827;margin-bottom:10px;">${sel ? 'Fila ' + sel.charAt(0) + ' · As. ' + sel.slice(1) : 'General'}</div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#9CA3AF;margin-bottom:2px;">Total pagado</div>
+          <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:13.5px;color:#111827;">€${total}</div>
+        </div>
+        <div style="flex:none;">${qr}</div>
+      </div>
+    </div>
+    <div style="padding:0 18px calc(36px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;animation:psUp .4s ease-out .3s both;">
+      <button type="button" data-purchase-view-ticket style="height:56px;border:none;border-radius:999px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;cursor:pointer;box-shadow:0 6px 18px rgba(255,87,34,.3);">Ver mi entrada</button>
+      <button type="button" data-purchase-done style="height:48px;border:1.5px solid #E9EAEC;border-radius:999px;background:#fff;color:#6B7280;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:14px;cursor:pointer;">Volver al inicio</button>
+    </div>
+  </div>`;
+}
+
+function purchaseFlowView() {
+  const e = EV[state.purchaseEventId];
+  if (!e) return '';
+  switch (state.purchaseFlow) {
+    case 'seats':      return purchaseSeatView(e);
+    case 'summary':    return purchaseSummaryView(e);
+    case 'payment':    return purchasePaymentView(e);
+    case 'processing': return purchaseProcessingView();
+    case 'success':    return purchaseSuccessView(e);
+    default: return '';
+  }
 }
 
 // Barra de navegación inferior flotante (solo iconos)
@@ -779,9 +1078,10 @@ function mapMarkerMarkup(e) {
 function mapPreviewCard(e) {
   const d = dec(e);
   return `<article class="map-preview-card" data-eid="${e.id}">
-    <div class="map-preview-hero" style="background:${d.bg};">
+    <div class="map-preview-hero" style="background:${d.bg};position:relative;overflow:hidden;">
+      ${d.portada ? `<img src="${d.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:${d.portadaFit};" aria-hidden="true">` : ''}
       <div class="map-preview-hero-shine"></div>
-      <div class="map-preview-hero-icon">${SVG.catIcon(e.cat, 'rgba(255,255,255,.92)', 30)}</div>
+      ${d.portada ? '' : `<div class="map-preview-hero-icon">${SVG.catIcon(e.cat, 'rgba(255,255,255,.92)', 30)}</div>`}
       <div class="map-preview-hero-grad"></div>
       <button type="button" data-fav="${e.id}" class="map-preview-fav" aria-label="Guardar">${SVG.heart(d.heartFill, d.heartStroke, 18, e.id)}</button>
       <button type="button" data-map-preview-close class="map-preview-close" aria-label="Cerrar">${SVG.close('#fff', 16)}</button>
@@ -962,10 +1262,16 @@ function trendRow(t) {
   const h = cardHeadlines(d);
   const dirPath  = t.dir === 'up' ? 'M6 15l6-6 6 6' : t.dir === 'down' ? 'M6 9l6 6 6-6' : 'M5 12h14';
   const dirColor = t.dir === 'up' ? AC : '#9CA3AF';
+  const thumb = d.portada
+    ? `<img src="${d.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:${d.portadaFit};" aria-hidden="true">`
+    : `<div style="position:absolute;inset:0;background:${d.bg};"></div>`;
   return `<div data-event-open="${t.id}" style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #F3F4F6;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;">
     <div style="width:20px;text-align:center;font-family:'Sora',sans-serif;font-weight:800;font-size:17px;color:#111827;flex:none;">${t.rank}</div>
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${dirColor}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><path d="${dirPath}"></path></svg>
-    <div style="position:relative;width:52px;height:52px;flex:none;border-radius:12px;overflow:hidden;"><div style="position:absolute;inset:0;background:${d.bg};"></div><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(17,24,39,0) 40%,rgba(17,24,39,.3));"></div></div>
+    <div style="position:relative;width:52px;height:52px;flex:none;border-radius:12px;overflow:hidden;background:${d.bg};">
+      ${thumb}
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(17,24,39,0) 40%,rgba(17,24,39,.28));pointer-events:none;"></div>
+    </div>
     <div style="flex:1;min-width:0;">
       <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em;">${h.title}</div>
       <div style="font-size:12.5px;font-weight:700;color:#374151;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h.subtitle}</div>
