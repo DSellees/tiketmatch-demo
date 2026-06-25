@@ -187,6 +187,18 @@ const EVENTS = [
     dateShort:'SÁB 05 JUL', date:'2026-07-05', time:'18:00',
     price:'€18', priceNum:18, lng:-0.3876, lat:39.4699,
   },
+  // e25: Valencia CF vs Girona FC (con portada)
+  {
+    id:'e25', cat:'football', status:'avail',
+    homeTeam:'Valencia CF', awayTeam:'Girona FC',
+    homeCrest:'vcf',        awayCrest:'gir',
+    competition:'LaLiga',
+    title:'Valencia vs Girona',
+    venue:'Estadio Mestalla', area:'Valencia',
+    dateShort:'DOM 02 AGO', date:'2026-08-02', time:'18:30',
+    price:'€32', priceNum:32, lng:-0.3582, lat:39.4747,
+    portada: 'assets/portadas/vlcvsgirona.png',
+  },
   // e24: Atlético de Madrid vs Real Betis (con portada)
   {
     id:'e24', cat:'football', status:'avail',
