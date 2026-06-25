@@ -187,6 +187,30 @@ const EVENTS = [
     dateShort:'SÁB 05 JUL', date:'2026-07-05', time:'18:00',
     price:'€18', priceNum:18, lng:-0.3876, lat:39.4699,
   },
+  // e24: Atlético de Madrid vs Real Betis (con portada)
+  {
+    id:'e24', cat:'football', status:'avail',
+    homeTeam:'Atlético de Madrid', awayTeam:'Real Betis',
+    homeCrest:'atm',              awayCrest:'bet',
+    competition:'LaLiga',
+    title:'Atlético vs Betis',
+    venue:'Cívitas Metropolitano', area:'Madrid',
+    dateShort:'SÁB 26 JUL', date:'2026-07-26', time:'20:00',
+    price:'€58', priceNum:58, lng:-3.5994, lat:40.4361,
+    portada: 'assets/portadas/ATHvsBETIS.png',
+  },
+  // e23: Derbi de Barcelona — FC Barcelona vs RCD Espanyol (con portada)
+  {
+    id:'e23', cat:'football', status:'last',
+    homeTeam:'FC Barcelona', awayTeam:'Espanyol',
+    homeCrest:'fcb',         awayCrest:'rcde',
+    competition:'LaLiga',
+    title:'Derbi de Barcelona',
+    venue:'Spotify Camp Nou', area:'Les Corts',
+    dateShort:'DOM 19 JUL', date:'2026-07-19', time:'17:00',
+    price:'€75', priceNum:75, lng:2.1228, lat:41.3809,
+    portada: 'assets/portadas/BCNvsRCD.png',
+  },
 ];
 
 // índice por id para acceso rápido
@@ -194,7 +218,7 @@ const EV = Object.fromEntries(EVENTS.map(e => [e.id, e]));
 
 // colecciones que alimentan cada sección de la Home
 const NEARBY      = ['e1', 'e4', 'e3', 'e8', 'e14', 'e13'];
-const POPULAR     = ['e17', 'e6', 'e2', 'e7', 'e10', 'e21'];
+const POPULAR     = ['e23', 'e24', 'e17', 'e6', 'e2', 'e7', 'e10', 'e21'];
 const PREMIUM     = ['e17', 'e6', 'e3', 'e10', 'e15'];
 const RECOMMENDED = ['e18', 'e19', 'e20', 'e22', 'e5', 'e12'];
 const TREND = [

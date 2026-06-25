@@ -1054,3 +1054,14 @@ body.is-landscape-blocked{
   font-size:10px;
   font-weight:600;
 }
+
+/* ── Cards Home ── */
+.home-card{
+  background:#fff;
+  border-radius:18px 18px 12px 12px;
+  overflow:hidden;
+}
+
+.home-card__body{
+  padding:12px 14px 14px;
+}

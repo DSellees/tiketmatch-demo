@@ -71,23 +71,39 @@ function cardDistanceBadge(d, theme) {
   return `<span class="card-distance card-distance--${theme}">${SVG.mapPin(theme === 'dark' ? '#FCA5A5' : '#EF4444', 12)}<span>${d.distanceLabel}</span></span>`;
 }
 
+function cardLocationDistanceLine(d, theme) {
+  const text = `${d.venue} · ${d.distanceLabel}`;
+  if (theme === 'dark') {
+    return `<div style="display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.72);font-size:12.5px;font-weight:600;min-width:0;">${SVG.mapPin('currentColor')}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${text}</span></div>`;
+  }
+  if (theme === 'trend') {
+    return `<div style="display:flex;align-items:center;gap:5px;color:#6B7280;font-size:11.5px;font-weight:500;margin-top:4px;min-width:0;">${SVG.mapPin('#9CA3AF', 12)}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${text}</span></div>`;
+  }
+  return `<div style="display:flex;align-items:center;gap:6px;color:#6B7280;font-size:12.5px;font-weight:500;margin-top:8px;min-width:0;">${SVG.mapPin('#9CA3AF')}<span style="line-height:1.35;">${text}</span></div>`;
+}
+
 // Renderiza la zona visual de la card: escudos si el evento es un partido,
 // o el placeholder de categoría habitual para el resto de eventos.
 function cardVisual(d, heightPx) {
   const hasMatch = d.homeCrest && d.awayCrest;
-  const h = heightPx || 0;
-  const style = `position:absolute;inset:0;background:${d.bg};`;
+  const style = `position:absolute;inset:0;background:${d.bg};overflow:hidden;`;
 
-  const overlay = `<div style="position:absolute;inset:0;background:radial-gradient(130% 90% at 50% -10%,rgba(255,255,255,.08),transparent 55%),linear-gradient(180deg,rgba(17,24,39,0) 45%,rgba(17,24,39,.34));"></div>`;
+  const overlay = `<div style="position:absolute;inset:0;background:radial-gradient(130% 90% at 50% -10%,rgba(255,255,255,.08),transparent 55%),linear-gradient(180deg,rgba(17,24,39,0) 45%,rgba(17,24,39,.34));pointer-events:none;"></div>`;
+
+  // Imagen de portada real: ocupa todo el fondo, escudos encima
+  const bgImg = d.portada
+    ? `<img src="${d.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;" aria-hidden="true">`
+    : '';
 
   if (hasMatch) {
-    // Partidos: escudos centrados con VS
     const crestStyle = `width:72px;height:72px;object-fit:contain;`;
     const vsStyle    = `font-family:'Sora',sans-serif;font-weight:800;font-size:13px;color:rgba(255,255,255,.5);letter-spacing:.05em;`;
-    // Franja inferior con competición
-    const compBadge  = d.competition
-      ? `<div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(17,24,39,.55);backdrop-filter:blur(6px);color:rgba(255,255,255,.7);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 12px;border-radius:999px;white-space:nowrap;">${d.competition}</div>`
-      : '';
+    if (d.portada) {
+      return `<div style="${style}">
+        ${bgImg}
+        ${overlay}
+      </div>`;
+    }
     return `<div style="${style}">
       ${overlay}
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:18px;">
@@ -95,12 +111,11 @@ function cardVisual(d, heightPx) {
         <span style="${vsStyle}">VS</span>
         <img src="${crestPath(d.awayCrest)}" alt="${d.awayTeam}" style="${crestStyle}" onerror="this.style.display='none'">
       </div>
-      ${compBadge}
     </div>`;
   }
 
-  // Genérico: placeholder texto
   return `<div style="${style}">
+    ${bgImg}
     ${overlay}
     <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'SF Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.34);">${d.label}</div>
   </div>`;
@@ -276,7 +291,7 @@ function priceChartPanel(e, opts) {
 
 // Ciudad del evento (deriva de la zona/recinto; por defecto Barcelona)
 function eventCity(e) {
-  const map = { 'Girona': 'Girona', 'Sevilla': 'Sevilla', 'San Sebastián': 'San Sebastián', 'Valencia': 'València' };
+  const map = { 'Girona': 'Girona', 'Sevilla': 'Sevilla', 'San Sebastián': 'San Sebastián', 'Valencia': 'València', 'Madrid': 'Madrid', 'Cornellà': 'Barcelona', 'Pedralbes': 'Barcelona' };
   return map[e.area] || 'Barcelona';
 }
 
@@ -298,7 +313,6 @@ function eventDetailView() {
   const t   = priceTrend(e);
   const h   = cardHeadlines(d);
   const city = eventCity(e);
-  const catLabel = CATNAME[e.cat][0].toUpperCase() + CATNAME[e.cat].slice(1);
   const isSoon = e.status === 'soon';
   const isLast = e.status === 'last';
 
@@ -310,13 +324,15 @@ function eventDetailView() {
   const durationByCat = { football: '≈ 2 h', basket: '≈ 2 h', balonmano: '≈ 1 h 30 min', concert: '≈ 2 h 30 min', festival: 'Todo el día', experience: '≈ 1 h 30 min' };
   const ageByCat      = { football: 'Todos los públicos', basket: 'Todos los públicos', balonmano: 'Todos los públicos', concert: '+16 (menores con adulto)', festival: '+16 (menores con adulto)', experience: 'Todos los públicos' };
 
-  const heroVisual = (d.homeCrest && d.awayCrest)
-    ? `<div style="display:flex;align-items:center;justify-content:center;gap:26px;">
-        <img src="assets/crests/${d.homeCrest}.png" alt="${d.homeTeam}" style="width:88px;height:88px;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.7));" onerror="this.style.display='none'">
-        <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:15px;color:rgba(255,255,255,.45);letter-spacing:.08em;">VS</span>
-        <img src="assets/crests/${d.awayCrest}.png" alt="${d.awayTeam}" style="width:88px;height:88px;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.7));" onerror="this.style.display='none'">
-      </div>`
-    : SVG.catIcon(e.cat, 'rgba(255,255,255,.18)', 84);
+  const heroVisual = e.portada
+    ? ''
+    : (d.homeCrest && d.awayCrest)
+      ? `<div style="display:flex;align-items:center;justify-content:center;gap:26px;">
+          <img src="assets/crests/${d.homeCrest}.png" alt="${d.homeTeam}" style="width:88px;height:88px;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.7));" onerror="this.style.display='none'">
+          <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:15px;color:rgba(255,255,255,.45);letter-spacing:.08em;">VS</span>
+          <img src="assets/crests/${d.awayCrest}.png" alt="${d.awayTeam}" style="width:88px;height:88px;object-fit:contain;filter:drop-shadow(0 6px 22px rgba(0,0,0,.7));" onerror="this.style.display='none'">
+        </div>`
+      : SVG.catIcon(e.cat, 'rgba(255,255,255,.18)', 84);
 
   // Fila de detalle con icono
   const infoRow = (ico, label, val) =>
@@ -362,8 +378,9 @@ function eventDetailView() {
   return `<div style="position:fixed;inset:0;background:#F5F5F6;z-index:30;overflow-y:auto;-webkit-overflow-scrolling:touch;">
 
     <!-- ── HERO ── -->
-    <div style="position:relative;width:100%;height:clamp(320px,54vh,480px);overflow:hidden;background:${d.bg};">
-      <div style="position:absolute;inset:0;background:radial-gradient(ellipse 120% 70% at 50% 22%,rgba(255,255,255,.08),transparent 58%),linear-gradient(180deg,rgba(17,24,39,.34) 0%,rgba(17,24,39,0) 30%,rgba(17,24,39,.30) 62%,rgba(17,24,39,.86) 100%);"></div>
+    <div style="position:relative;width:100%;height:clamp(400px,62vh,560px);overflow:hidden;background:${d.bg};">
+      ${e.portada ? `<img src="${e.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;" aria-hidden="true">` : ''}
+      <div style="position:absolute;inset:0;background:radial-gradient(ellipse 120% 70% at 50% 22%,rgba(255,255,255,.08),transparent 58%),linear-gradient(180deg,rgba(17,24,39,.28) 0%,rgba(17,24,39,0) 28%,rgba(17,24,39,.22) 55%,rgba(17,24,39,.92) 100%);"></div>
 
       <!-- Barra superior: volver + acciones -->
       <div style="position:absolute;top:0;left:0;right:0;z-index:2;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;">
@@ -378,20 +395,21 @@ function eventDetailView() {
         </div>
       </div>
 
-      <div style="position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;padding:72px 22px 40px;box-sizing:border-box;">
+      <div style="position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;padding:72px 22px 36px;box-sizing:border-box;">
         <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0;">
           ${heroVisual}
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;text-align:center;">
-          <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-            <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.92);color:#1A1A1A;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:700;padding:5px 11px;border-radius:999px;">${SVG.catIcon(e.cat, AC, 12)} ${catLabel}</span>
-            ${statusBadge}
-          </div>
-          <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:26px;color:#fff;letter-spacing:-.03em;line-height:1.12;text-shadow:0 2px 14px rgba(0,0,0,.5);max-width:100%;">${h.title}</div>
-          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,.88);margin-top:8px;line-height:1.35;">${h.subtitle}</div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-top:12px;color:rgba(255,255,255,.78);font-size:12.5px;font-weight:600;flex-wrap:wrap;">
-            <span style="display:flex;align-items:center;gap:5px;">${SVG.cal('currentColor')} ${e.dateShort} · ${e.time}</span>
-            <span style="display:flex;align-items:center;gap:5px;">${SVG.mapPin('currentColor')} ${e.venue}</span>
+          ${statusBadge ? `<div style="margin-bottom:10px;">${statusBadge}</div>` : ''}
+          <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:clamp(28px,7.5vw,40px);color:#fff;letter-spacing:-.03em;line-height:1.08;text-shadow:0 3px 20px rgba(0,0,0,.65);max-width:100%;">${h.title}</div>
+          ${e.competition ? `<div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:700;color:rgba(255,255,255,.58);margin-top:7px;letter-spacing:.08em;text-transform:uppercase;">${e.competition}</div>` : ''}
+          <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin-top:16px;">
+            ${[
+              [`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M3 10h18"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect></svg>`, e.dateShort],
+              [`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>`, e.time + ' · Puertas ' + opening],
+              [`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>`, e.venue],
+              [`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"></path></svg>`, city],
+            ].map(([ico, val]) => `<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(17,24,39,.46);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.13);color:rgba(255,255,255,.92);font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:999px;white-space:nowrap;">${ico}${val}</span>`).join('')}
           </div>
         </div>
       </div>
@@ -400,20 +418,6 @@ function eventDetailView() {
     <!-- ── HOJA DE CONTENIDO ── -->
     <div style="position:relative;margin-top:-26px;background:#F5F5F6;border-radius:28px 28px 0 0;padding:8px 18px 130px;">
       <div style="display:flex;justify-content:center;padding:8px 0 4px;"><div style="width:38px;height:4px;border-radius:2px;background:#D8D8DA;"></div></div>
-
-      <!-- Detalles del evento -->
-      <div style="background:#fff;border-radius:20px;padding:4px 16px;box-shadow:0 2px 16px rgba(17,24,39,.05);margin-top:8px;">
-        ${infoRow(ic.cal, 'Fecha', e.dateShort)}
-        ${infoRow(ic.clock, 'Hora', e.time + ' · Puertas ' + opening)}
-        ${infoRow(ic.pin, 'Recinto', e.venue + ' · ' + e.area)}
-        <div style="display:flex;align-items:center;gap:13px;padding:13px 0;">
-          <span style="width:38px;height:38px;border-radius:11px;background:#F6F6F7;display:flex;align-items:center;justify-content:center;flex:none;">${ic.city}</span>
-          <div style="flex:1;min-width:0;">
-            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:500;color:#9CA3AF;">Ciudad</div>
-            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14.5px;font-weight:700;color:#1A1A1A;line-height:1.25;margin-top:1px;">${city}</div>
-          </div>
-        </div>
-      </div>
 
       <!-- Participantes (solo deportes) -->
       ${participants}
@@ -569,9 +573,12 @@ function ticketDetailView() {
         <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:500;color:#B0B0B0;text-align:center;">Muestra este código en el acceso al recinto</div>
 
         <!-- Apple Wallet -->
-        <button type="button" style="width:100%;height:50px;border:none;border-radius:14px;background:#000;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;">
-          <svg width="14" height="17" viewBox="0 0 814 1000" fill="white"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-37.5-155.5-98.3C111.5 787.8 47 665.2 47 543.5c0-183.7 120.5-280.9 232.1-280.9 61.5 0 112.8 43.5 150.7 43.5 36.1 0 93.5-46.2 162.4-46.2 26.4 0 108.2 2.6 164.4 100.4zm-180.6-159.8c28.5-35.7 49.2-85.4 49.2-135.1 0-6.9-.6-13.9-1.9-19.5-46.5 1.9-101.6 31.2-135.2 70.6-26.1 29.9-50.9 79.6-50.9 130 0 7.5 1.3 14.9 1.9 17.2 3.2.6 8.4 1.3 13.6 1.3 41.5 0 93.7-28 123.3-64.5z"/></svg>
-          Add to Apple Wallet
+        <button type="button" style="width:100%;height:50px;border:none;border-radius:14px;background:#000;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:4px;padding:0 18px;box-sizing:border-box;">
+          <img src="assets/wallet-apple.svg" alt="" aria-hidden="true" style="width:28px;height:auto;flex:none;">
+          <div style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;">
+            <span style="font-family:'-apple-system','SF Pro Text','Helvetica Neue',sans-serif;font-size:10px;font-weight:400;color:rgba(255,255,255,.85);">Agregar a</span>
+            <span style="font-family:'-apple-system','SF Pro Display','Helvetica Neue',sans-serif;font-size:15px;font-weight:600;color:#fff;letter-spacing:-.01em;">Apple Wallet</span>
+          </div>
         </button>
       </div>
 
@@ -798,19 +805,18 @@ function cardStd(e) {
   const d = dec(e);
   const h = cardHeadlines(d);
   const statusBadge = cardStatusBadge(d);
-  return `<div class="home-card" data-event-open="${e.id}" style="width:100%;font-family:'Plus Jakarta Sans',-apple-system,sans-serif;background:#fff;cursor:pointer;">
-    <div style="position:relative;width:100%;aspect-ratio:1.55;border-radius:18px;overflow:hidden;">
+  return `<div class="home-card" data-event-open="${e.id}" style="width:100%;font-family:'Plus Jakarta Sans',-apple-system,sans-serif;cursor:pointer;">
+    <div style="position:relative;width:100%;aspect-ratio:1.55;overflow:hidden;">
       ${cardVisual(d)}
       <div style="position:absolute;top:10px;left:10px;max-width:calc(100% - 56px);">${cardPriceBlock(d, 'light')}</div>
       <button data-fav="${e.id}" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:none;border-radius:50%;background:rgba(17,24,39,.42);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:0;">${SVG.heart(d.heartFill, d.heartStroke, 17, e.id)}</button>
       ${statusBadge ? `<div style="position:absolute;bottom:10px;left:10px;">${statusBadge}</div>` : ''}
-      <div style="position:absolute;bottom:10px;right:10px;">${cardDistanceBadge(d, 'light')}</div>
     </div>
-    <div style="padding:12px 2px 2px;">
+    <div class="home-card__body">
       <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;">${SVG.cal(AC)}<span style="color:#6B7280;">${d.dateShort} · ${d.time}</span></div>
       <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:#111827;margin-top:7px;line-height:1.25;letter-spacing:-.01em;">${h.title}</div>
       <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;color:#374151;margin-top:5px;line-height:1.35;">${h.subtitle}</div>
-      <div style="display:inline-flex;align-items:center;gap:5px;margin-top:11px;background:${AS};color:${AC};font-size:11px;font-weight:800;padding:5px 10px;border-radius:999px;"><span style="width:5px;height:5px;border-radius:50%;background:${AC};"></span>Venta en Catchtime</div>
+      ${cardLocationDistanceLine(d, 'light')}
     </div>
   </div>`;
 }
@@ -820,7 +826,7 @@ function cardEdit(e) {
   const d = dec(e);
   const h = cardHeadlines(d);
   const statusBadge = cardStatusBadge(d, 'padding:5px 11px;');
-  return `<div class="home-card" data-event-open="${e.id}" style="position:relative;width:100%;height:392px;border-radius:22px;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;">
+  return `<div class="home-card" data-event-open="${e.id}" style="position:relative;width:100%;height:392px;border-radius:22px 22px 14px 14px;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;">
     ${cardVisual(d)}
     <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(17,24,39,.22) 0%,rgba(17,24,39,0) 32%,rgba(17,24,39,.55) 68%,rgba(17,24,39,.93) 100%);pointer-events:none;"></div>
     <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;padding:14px;gap:10px;">
@@ -828,17 +834,13 @@ function cardEdit(e) {
       <button data-fav="${e.id}" style="width:38px;height:38px;border:none;border-radius:50%;background:rgba(255,255,255,.18);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:0;flex:none;">${SVG.heart(d.heartFill, d.heartStroke, 19, e.id)}</button>
     </div>
     <div style="position:relative;z-index:1;padding:16px 16px 18px;display:flex;flex-direction:column;gap:9px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        ${statusBadge}
-        ${cardDistanceBadge(d, 'dark')}
-      </div>
+      ${statusBadge ? `<div>${statusBadge}</div>` : ''}
       <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:22px;color:#fff;line-height:1.12;letter-spacing:-.02em;">${h.title}</div>
       <div style="font-size:14px;font-weight:700;color:rgba(255,255,255,.88);line-height:1.35;">${h.subtitle}</div>
       <div style="display:flex;align-items:center;gap:14px;color:rgba(255,255,255,.72);font-size:12.5px;font-weight:600;flex-wrap:wrap;">
         <span style="display:flex;align-items:center;gap:5px;">${SVG.cal('currentColor')}${d.dateShort} · ${d.time}</span>
-        ${!(d.homeTeam && d.awayTeam) ? `<span style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;">${SVG.mapPin('currentColor')}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.venue}</span></span>` : ''}
       </div>
-      <div style="display:inline-flex;align-self:flex-start;align-items:center;gap:6px;margin-top:2px;background:rgba(255,255,255,.16);backdrop-filter:blur(6px);color:#fff;font-size:11px;font-weight:800;padding:5px 11px;border-radius:999px;"><span style="width:5px;height:5px;border-radius:50%;background:${AC};"></span>Venta en Catchtime</div>
+      ${cardLocationDistanceLine(d, 'dark')}
     </div>
   </div>`;
 }
@@ -968,7 +970,7 @@ function trendRow(t) {
       <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em;">${h.title}</div>
       <div style="font-size:12.5px;font-weight:700;color:#374151;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h.subtitle}</div>
       <div style="color:#9CA3AF;font-size:11px;font-weight:500;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.dateShort} · ${d.time}</div>
-      <div style="margin-top:4px;">${cardDistanceBadge(d, 'trend')}</div>
+      ${cardLocationDistanceLine(d, 'trend')}
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none;">
       <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:14px;color:#111827;">${d.price}</span>
