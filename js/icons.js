@@ -49,4 +49,16 @@ const SVG = {
     };
     return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths[cat] || paths.experience}</svg>`;
   },
+
+  // iconos por tipo de notificación in-app
+  notifType: (type, c = '#374151', s = 20) => {
+    const paths = {
+      event_start:  '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',
+      price_alert:  '<path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l7.3-7.3a1 1 0 0 0 0-1.41Z"></path><circle cx="7" cy="7" r="1.5" fill="' + c + '" stroke="none"></circle>',
+      last_tickets: '<path d="M4 6h16a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4V7a1 1 0 0 1 1-1Z"></path><path d="M14 6v12"></path><path d="M18 8v2M18 14v2"></path>',
+      reminder:     '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9Z"></path><path d="M10.5 21a1.8 1.8 0 0 0 3 0"></path>',
+      new_event:    '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle>',
+    };
+    return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths[type] || paths.reminder}</svg>`;
+  },
 };

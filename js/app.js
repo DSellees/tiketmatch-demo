@@ -35,6 +35,12 @@ const state = {
   profileLang: 'Español',
   profileContactSent: false,
   profileFaqOpen: new Set(),
+  // ── Notificaciones ──
+  notificationsOpen: false,
+  notificationsQuery: '',
+  notificationsSearchOpen: false,
+  notificationsSearchFocused: false,
+  notificationsRead: new Set(),
 };
 
 const MAP_DEFAULT = { center: [2.1734, 41.3851], zoom: 12.2 };
@@ -587,15 +593,14 @@ function addUserLocationMarker() {
   el.style.borderRadius = '50%';
   el.style.background = '#3B82F6';
   el.style.border = '3px solid #fff';
-  el.style.boxShadow = '0 0 0 6px rgba(59, 130, 246, 0.2)';
   el.style.animation = 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite';
 
   if (!document.getElementById('pulse-animation')) {
     const style = document.createElement('style');
     style.id = 'pulse-animation';
     style.innerHTML = `@keyframes pulse {
-      0%, 100% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.2); }
-      50% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0.1); }
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.75; transform: scale(1.08); }
     }`;
     document.head.appendChild(style);
   }
@@ -752,23 +757,25 @@ function render() {
   // pantallas modales a pantalla completa: ocultan la home y la nav por completo
   // para que nada se cuele por detrás ni quede scroll vacío en móvil.
   const modalOpen = state.filtersOpen || state.locationOpen;
+  const notificationsOpen = state.notificationsOpen;
 
   const home = `
     <div id="content">
       ${homeUserHeader()}
       ${renderSearchBar()}
       ${body}
-    </div>
-    ${bottomNav()}`;
+    </div>`;
 
-  const map       = `${mapTabView()}${bottomNav()}`;
-  const favorites = `${favoritesTabView()}${bottomNav()}`;
-  const tickets   = `${ticketsTabView()}${bottomNav()}`;
-  const profile   = `${profileTabView()}${state.profilePanel ? profilePanelView() : ''}${bottomNav()}`;
+  const map       = mapTabView();
+  const favorites = favoritesTabView();
+  const tickets   = ticketsTabView();
+  const profile   = `${profileTabView()}${state.profilePanel ? profilePanelView() : ''}`;
   const overlays  = `${state.filtersOpen ? filterPanel(state.draftFilters) : ''}${state.locationOpen ? locationPanel(state.locationQuery) : ''}`;
   const ticketDetailOpen  = state.tab === 'tickets' && !!state.ticketDetail;
   const profilePanelOpen  = state.tab === 'profile' && !!state.profilePanel;
-  const screen = modalOpen
+  const screen = notificationsOpen
+    ? notificationsScreenView()
+    : modalOpen
     ? overlays
     : ticketDetailOpen
       ? ticketDetailView()
@@ -783,6 +790,13 @@ function render() {
               : home;
 
   document.getElementById('app').innerHTML = screen;
+
+  const navSlot = document.getElementById('nav-slot');
+  const showNav = !modalOpen && !notificationsOpen && !ticketDetailOpen && !profilePanelOpen;
+  if (navSlot) {
+    navSlot.innerHTML = showNav ? bottomNav() : '';
+    navSlot.setAttribute('aria-hidden', showNav ? 'false' : 'true');
+  }
 
   if (!modalOpen && state.tab === 'discover') {
     requestAnimationFrame(() => ensureMapReady());
@@ -813,8 +827,17 @@ function render() {
     if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
   }
 
+  if (notificationsOpen && state.notificationsSearchFocused) {
+    const inp = document.querySelector('[data-notifications-search]');
+    if (inp) {
+      inp.focus();
+      const len = inp.value.length;
+      inp.setSelectionRange(len, len);
+    }
+  }
+
   // bloquea el scroll del fondo mientras hay una pantalla modal abierta
-  document.body.style.overflow = (modalOpen || ticketDetailOpen || profilePanelOpen) ? 'hidden' : '';
+  document.body.style.overflow = (modalOpen || ticketDetailOpen || profilePanelOpen || notificationsOpen) ? 'hidden' : '';
 }
 
 function openLocation() {
@@ -877,6 +900,21 @@ function useCurrentLocation() {
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
   );
+}
+
+function closeNotifications() {
+  state.notificationsOpen = false;
+  state.notificationsSearchFocused = false;
+  render();
+}
+
+function openNotifications() {
+  state.notificationsOpen = true;
+  render();
+}
+
+function markNotifRead(id) {
+  if (id) state.notificationsRead.add(id);
 }
 
 function openFilters() {
@@ -964,6 +1002,40 @@ document.addEventListener('click', e => {
   const calBtn = e.target.closest('[data-ticket-cal]');
   if (calBtn) {
     window.open(decodeURIComponent(calBtn.dataset.ticketCal), '_blank');
+    return;
+  }
+
+  // ── Notificaciones ───────────────────────────────────────────────────────────
+  if (e.target.closest('[data-notifications-open]')) {
+    openNotifications();
+    return;
+  }
+
+  if (e.target.closest('[data-notifications-close]')) {
+    closeNotifications();
+    return;
+  }
+
+  if (e.target.closest('[data-notifications-search-toggle]')) {
+    state.notificationsSearchOpen = !state.notificationsSearchOpen;
+    if (!state.notificationsSearchOpen) state.notificationsQuery = '';
+    state.notificationsSearchFocused = state.notificationsSearchOpen;
+    render();
+    return;
+  }
+
+  const notifCard = e.target.closest('[data-notif-id]');
+  if (notifCard) {
+    const n = NOTIFICATIONS.find(x => x.id === notifCard.dataset.notifId);
+    markNotifRead(notifCard.dataset.notifId);
+    state.notificationsOpen = false;
+    if (n && n.eventId) {
+      state.tab = 'home';
+      state.query = EV[n.eventId].title;
+      state.appliedFilters = defaultFilters();
+      state.searchFocused = true;
+    }
+    render();
     return;
   }
 
@@ -1177,6 +1249,12 @@ document.addEventListener('input', e => {
     state.locationQuery = e.target.value;
     state.locationFocused = true;
     render();
+    return;
+  }
+  if (e.target.matches('[data-notifications-search]')) {
+    state.notificationsQuery = e.target.value;
+    state.notificationsSearchFocused = true;
+    render();
   }
 });
 
@@ -1196,11 +1274,13 @@ document.addEventListener('change', e => {
 document.addEventListener('focusin', e => {
   if (e.target.matches('[data-search]')) state.searchFocused = true;
   if (e.target.matches('[data-location-search]')) state.locationFocused = true;
+  if (e.target.matches('[data-notifications-search]')) state.notificationsSearchFocused = true;
 });
 
 document.addEventListener('focusout', e => {
   if (e.target.matches('[data-search]')) state.searchFocused = false;
   if (e.target.matches('[data-location-search]')) state.locationFocused = false;
+  if (e.target.matches('[data-notifications-search]')) state.notificationsSearchFocused = false;
   if (e.target.matches('[data-profile-name-input]')) {
     const val = e.target.value.trim();
     if (val) state.profileName = val;

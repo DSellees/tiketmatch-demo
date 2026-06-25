@@ -1,0 +1,10 @@
+{
+  "name": "Catchtime",
+  "short_name": "Catchtime",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F9FAFB",
+  "theme_color": "#F9FAFB",
+  "lang": "es"
+}

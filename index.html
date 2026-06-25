@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#F9FAFB">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
   <title>Catchtime</title>
 
   <!-- Tipografías -->
@@ -12,12 +16,22 @@
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Estilos (v= cache-busting: evita assets obsoletos con live-server/iCloud) -->
-  <link rel="stylesheet" href="css/styles.css?v=15">
+  <link rel="stylesheet" href="css/styles.css?v=32">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.css">
 </head>
 <body>
-  <!-- punto de montaje: app.js inyecta aquí la pantalla -->
-  <div id="app"></div>
+  <div id="orientation-lock" aria-live="polite" hidden>
+    <div class="orientation-lock-inner">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"></rect><path d="M12 18h.01"></path></svg>
+      <p class="orientation-lock-title">Gira el dispositivo</p>
+      <p class="orientation-lock-text">Catchtime funciona en vertical</p>
+    </div>
+  </div>
+
+  <div id="app-shell">
+    <div id="app"></div>
+    <div id="nav-slot" aria-hidden="false"></div>
+  </div>
 
   <!-- Bloqueo de zoom móvil (iOS ignora user-scalable=no, así que lo forzamos) -->
   <script>
@@ -32,13 +46,26 @@
       if (now - lastTouch <= 300) e.preventDefault();
       lastTouch = now;
     }, { passive: false });
+
+    // Bloqueo horizontal solo en móvil táctil (no en escritorio)
+    function lockPortrait() {
+      const el = document.getElementById('orientation-lock');
+      const show = window.matchMedia(
+        '(orientation: landscape) and (hover: none) and (pointer: coarse)'
+      ).matches;
+      if (el) el.hidden = !show;
+      document.body.classList.toggle('is-landscape-blocked', show);
+    }
+    lockPortrait();
+    window.addEventListener('orientationchange', lockPortrait);
+    window.addEventListener('resize', lockPortrait);
   </script>
 
   <!-- Scripts en orden de dependencia -->
-  <script src="js/data.js?v=14"></script>
-  <script src="js/icons.js?v=14"></script>
-  <script src="js/components.js?v=15"></script>
+  <script src="js/data.js?v=18"></script>
+  <script src="js/icons.js?v=18"></script>
+  <script src="js/components.js?v=27"></script>
   <script src="https://unpkg.com/maplibre-gl@5.9.0/dist/maplibre-gl.js"></script>
-  <script src="js/app.js?v=15"></script>
+  <script src="js/app.js?v=27"></script>
 </body>
 </html>

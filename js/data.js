@@ -279,3 +279,71 @@ function defaultFilters() {
 function cloneFilters(f) {
   return { cat: new Set(f.cat), date: f.date, price: f.price, status: new Set(f.status), sort: f.sort };
 }
+
+// ── Notificaciones in-app (demo) ─────────────────────────────────────────────
+// section: unread | yesterday | week
+const NOTIF_SECTION_LABELS = {
+  unread:    'Sin leer',
+  yesterday: 'Ayer',
+  week:      'Esta semana',
+};
+
+// icono y fondo por tipo de aviso (no por categoría del evento)
+const NOTIF_TYPE_META = {
+  event_start:  { bg: '#EFF6FF', color: '#2563EB' },
+  price_alert:  { bg: '#ECFDF5', color: '#059669' },
+  last_tickets: { bg: '#FEF2F2', color: '#DC2626' },
+  reminder:     { bg: '#F5F3FF', color: '#7C3AED' },
+  new_event:    { bg: '#FFF7ED', color: '#EA580C' },
+};
+
+const NOTIFICATIONS = [
+  {
+    id: 'n1', section: 'unread', type: 'event_start', eventId: 'e3',
+    time: 'Ahora', title: 'Empieza pronto',
+    body: 'Derbi Mediterráneo comienza en 2 horas en RCDE Stadium.',
+    read: false, cta: 'Ver entrada',
+  },
+  {
+    id: 'n2', section: 'unread', type: 'price_alert', eventId: 'e17',
+    time: 'Hace 1 h', title: 'Precio objetivo alcanzado',
+    body: 'El Clásico bajó a €135. Es el precio que marcaste como objetivo.',
+    read: false, cta: 'Ver evento',
+  },
+  {
+    id: 'n3', section: 'yesterday', type: 'last_tickets', eventId: 'e2',
+    time: 'Ayer · 18:42', title: 'Quedan pocas entradas',
+    body: 'Solo quedan 5 entradas para Electronit Festival. No te quedes fuera.',
+    read: true, cta: 'Comprar ahora',
+  },
+  {
+    id: 'n4', section: 'yesterday', type: 'reminder', eventId: 'e9',
+    time: 'Ayer · 09:15', title: 'Recordatorio de evento',
+    body: 'Jazz al Fòrum es mañana a las 20:00. Lleva tu entrada en el móvil.',
+    read: true, cta: 'Ver entrada',
+  },
+  {
+    id: 'n5', section: 'yesterday', type: 'price_alert', eventId: 'e6',
+    time: 'Ayer · 08:30', title: 'Bajada de precio',
+    body: 'Champions Night · Octavos ahora desde €85. Antes €95.',
+    read: true, cta: 'Ver evento',
+  },
+  {
+    id: 'n6', section: 'week', type: 'new_event', eventId: 'e11',
+    time: 'Lun · 14:20', title: 'Nuevo evento cerca de ti',
+    body: 'Vibra Festival en Montjuïc encaja con tus categorías favoritas.',
+    read: true, cta: 'Ver evento',
+  },
+  {
+    id: 'n7', section: 'week', type: 'last_tickets', eventId: 'e7',
+    time: 'Dom · 11:05', title: 'Últimas entradas',
+    body: 'Quedan menos de 20 entradas para Litoral Sound 2026.',
+    read: true, cta: 'Comprar ahora',
+  },
+  {
+    id: 'n8', section: 'week', type: 'event_start', eventId: 'e10',
+    time: 'Vie · 19:50', title: 'Tu evento empieza pronto',
+    body: 'Euroliga · Jornada 21 comienza en 30 minutos en Palau Blaugrana.',
+    read: true, cta: 'Ver entrada',
+  },
+];

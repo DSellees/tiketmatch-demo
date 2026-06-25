@@ -50,7 +50,7 @@ function cardVisual(d, heightPx) {
 
   if (hasMatch) {
     // Partidos: escudos centrados con VS
-    const crestStyle = `width:72px;height:72px;object-fit:contain;filter:drop-shadow(0 4px 16px rgba(0,0,0,.6));`;
+    const crestStyle = `width:72px;height:72px;object-fit:contain;`;
     const vsStyle    = `font-family:'Sora',sans-serif;font-weight:800;font-size:13px;color:rgba(255,255,255,.5);letter-spacing:.05em;`;
     // Franja inferior con competición
     const compBadge  = d.competition
@@ -107,7 +107,7 @@ function ticketCard(e) {
   const sColor = isPast ? '#9CA3AF' : '#16A34A';
   const sBg    = isPast ? '#F3F4F6' : '#F0FDF4';
   const sTxt   = isPast ? 'Usado' : 'Activo';
-  return `<div data-ticket-open="${e.id}" style="display:flex;background:#fff;border-radius:20px;overflow:hidden;border:1px solid #EFEFF1;box-shadow:0 2px 14px rgba(17,24,39,.07);cursor:pointer;margin-bottom:14px;min-height:100px;">
+  return `<div data-ticket-open="${e.id}" style="display:flex;background:#fff;border-radius:20px;overflow:hidden;border:1px solid #EFEFF1;cursor:pointer;margin-bottom:14px;min-height:100px;">
     <div style="width:5px;background:${isPast ? '#E5E7EB' : AC};flex:none;"></div>
     <div style="padding:14px 12px;display:flex;align-items:center;justify-content:center;background:${isPast ? '#F9FAFB' : AS};flex:none;border-right:2px dashed ${isPast ? '#E5E7EB' : 'rgba(255,87,34,.18)'};">
       ${qr}
@@ -197,7 +197,7 @@ function ticketDetailView() {
     </div>
 
     <!-- ── Tarjeta ticket: todo blanco ── -->
-    <div style="position:relative;margin:6px 16px 20px;flex:none;filter:drop-shadow(0 4px 28px rgba(17,24,39,.13));">
+    <div style="position:relative;margin:6px 16px 20px;flex:none;">
 
       <!-- Sección QR -->
       <div style="background:#fff;border-radius:24px 24px 0 0;padding:24px 20px 28px;text-align:center;">
@@ -264,7 +264,7 @@ function ticketDetailView() {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         Descargar
       </button>
-      <button type="button" style="flex:1;height:50px;border:none;border-radius:14px;background:${AC};color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 6px 18px rgba(255,87,34,.28);">
+      <button type="button" style="flex:1;height:50px;border:none;border-radius:14px;background:${AC};color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
         Compartir
       </button>
@@ -300,6 +300,95 @@ function bottomNav() {
   </nav>`;
 }
 
+// ── Notificaciones in-app ─────────────────────────────────────────────────────
+function isNotifRead(n) {
+  return n.read || state.notificationsRead.has(n.id);
+}
+
+function unreadNotifCount() {
+  return NOTIFICATIONS.filter(n => !isNotifRead(n)).length;
+}
+
+function filterNotifications(query) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return NOTIFICATIONS.slice();
+  return NOTIFICATIONS.filter(n => {
+    const ev = n.eventId ? EV[n.eventId] : null;
+    const haystack = [n.title, n.body, ev && ev.title, ev && ev.venue].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(q);
+  });
+}
+
+function notifIcon(n) {
+  const meta = NOTIF_TYPE_META[n.type] || NOTIF_TYPE_META.reminder;
+  return `<span class="notif-card-icon" style="background:${meta.bg};">${SVG.notifType(n.type, meta.color, 20)}</span>`;
+}
+
+function notificationCard(n) {
+  const unread = !isNotifRead(n);
+  const chevron = `<svg class="notif-card-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C9CE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg>`;
+  return `<button type="button" class="notif-card pill-surface${unread ? ' is-unread' : ''}" data-notif-id="${n.id}" aria-label="${n.title}">
+    <div class="notif-card-top">
+      ${notifIcon(n)}
+      <div class="notif-card-main">
+        <div class="notif-card-head">
+          <div class="notif-card-title">${n.title}</div>
+          <time class="notif-card-time">${n.time}</time>
+        </div>
+        <p class="notif-card-body">${n.body}</p>
+      </div>
+      ${chevron}
+    </div>
+  </button>`;
+}
+
+function notificationsScreenView() {
+  const list = filterNotifications(state.notificationsQuery);
+  const sections = ['unread', 'yesterday', 'week'];
+  const backArrow = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"></path></svg>`;
+
+  const sectionBlock = (key) => {
+    const items = list.filter(n => n.section === key);
+    if (!items.length) return '';
+    return `<section class="notif-section" aria-label="${NOTIF_SECTION_LABELS[key]}">
+      <div class="notif-section-head">
+        <h2 class="notif-section-title">${NOTIF_SECTION_LABELS[key]}</h2>
+        <span class="notif-section-badge">${items.length}</span>
+      </div>
+      <div class="notif-section-list">${items.map(notificationCard).join('')}</div>
+    </section>`;
+  };
+
+  const body = list.length === 0
+    ? `<div class="notif-empty">
+         <div class="notif-empty-icon">${SVG.bell('#9CA3AF', 32)}</div>
+         <div class="notif-empty-title">Sin resultados</div>
+         <div class="notif-empty-text">${state.notificationsQuery.trim()
+           ? `No encontramos avisos para «${state.notificationsQuery.trim()}».`
+           : 'Cuando haya novedades sobre tus eventos, las verás aquí.'}</div>
+       </div>`
+    : sections.map(sectionBlock).join('');
+
+  const searchVisible = state.notificationsSearchOpen || state.notificationsQuery.trim().length > 0;
+
+  return `<div id="notifications-screen" aria-label="Notificaciones">
+    <header class="notif-header">
+      <button type="button" data-notifications-close class="pill-icon-btn notif-header-btn" aria-label="Volver">${backArrow}</button>
+      <h1 class="notif-header-title">Notificaciones</h1>
+      <button type="button" data-notifications-search-toggle class="pill-icon-btn notif-header-btn${searchVisible ? ' is-active' : ''}" aria-label="Buscar">${SVG.search('#111827', 20)}</button>
+    </header>
+
+    ${searchVisible ? `<div class="notif-search-wrap">
+      <div class="pill-surface notif-search">
+        ${SVG.search('#9CA3AF', 18)}
+        <input data-notifications-search type="search" enterkeyhint="search" placeholder="Buscar avisos, eventos…" value="${state.notificationsQuery.replace(/"/g, '&quot;')}" aria-label="Buscar notificaciones">
+      </div>
+    </div>` : ''}
+
+    <div class="notif-content">${body}</div>
+  </div>`;
+}
+
 // Avatar circular — imagen real del usuario
 function userAvatar(size = 44) {
   const src = state.profileAvatar || 'assets/user/mpv_ic.png';
@@ -311,18 +400,21 @@ function userAvatar(size = 44) {
 // Cabecera Home: foto + nombre y debajo ubicación con dropdown
 function homeUserHeader() {
   return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px 0;">
-    <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
-      <button type="button" data-tab="profile" aria-label="Mi perfil" style="border:none;background:none;padding:0;flex:none;cursor:pointer;">${userAvatar(50)}</button>
+    <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
+      <button type="button" data-tab="profile" aria-label="Mi perfil" style="border:none;background:none;padding:0;flex:none;cursor:pointer;">${userAvatar(56)}</button>
       <div style="min-width:0;flex:1;">
-        <div style="font-family:'Sora',sans-serif;font-weight:600;font-size:16px;color:#111827;letter-spacing:-.02em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${state.profileName}</div>
-        <button type="button" data-location-open aria-label="Cambiar ubicación" style="display:flex;align-items:center;gap:4px;margin-top:3px;padding:0;border:none;background:none;max-width:100%;">
-          ${SVG.pin('#9CA3AF', 13)}
-          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:500;font-size:12.5px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${state.location}</span>
-          ${SVG.chevDown('#9CA3AF', 13)}
+        <div style="font-family:'Sora',sans-serif;font-weight:600;font-size:18px;color:#111827;letter-spacing:-.02em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${state.profileName}</div>
+        <button type="button" data-location-open aria-label="Cambiar ubicación" style="display:flex;align-items:center;gap:5px;margin-top:4px;padding:0;border:none;background:none;max-width:100%;">
+          ${SVG.pin('#9CA3AF', 14)}
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:500;font-size:14px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${state.location}</span>
+          ${SVG.chevDown('#9CA3AF', 14)}
         </button>
       </div>
     </div>
-    <button type="button" class="pill-icon-btn" aria-label="Notificaciones" style="width:48px;height:48px;margin-left:10px;">${SVG.bell('#111827', 22)}</button>
+    <button type="button" data-notifications-open class="pill-icon-btn" aria-label="Notificaciones" style="width:48px;height:48px;margin-left:10px;position:relative;">
+      ${SVG.bell('#111827', 22)}
+      ${unreadNotifCount() > 0 ? `<span class="notif-bell-badge">${unreadNotifCount()}</span>` : ''}
+    </button>
   </div>`;
 }
 
@@ -404,9 +496,9 @@ function cardStd(e) {
     ? `<span style="font-size:10px;font-weight:700;color:#EF4444;background:#FEE2E2;padding:2px 8px;border-radius:999px;margin-left:6px;">${d.distanceText}</span>`
     : '';
   return `<div style="width:100%;font-family:'Plus Jakarta Sans',-apple-system,sans-serif;background:#fff;">
-    <div style="position:relative;width:100%;aspect-ratio:1.55;border-radius:18px;overflow:hidden;box-shadow:0 6px 18px rgba(17,24,39,.10);">
+    <div style="position:relative;width:100%;aspect-ratio:1.55;border-radius:18px;overflow:hidden;">
       ${cardVisual(d)}
-      <div style="position:absolute;top:10px;left:10px;background:#fff;color:#111827;font-weight:800;font-size:13px;padding:5px 11px;border-radius:999px;box-shadow:0 2px 8px rgba(17,24,39,.18);">${d.price}</div>
+      <div style="position:absolute;top:10px;left:10px;background:#fff;color:#111827;font-weight:800;font-size:13px;padding:5px 11px;border-radius:999px;">${d.price}</div>
       <button data-fav="${e.id}" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:none;border-radius:50%;background:rgba(17,24,39,.42);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:0;">${SVG.heart(d.heartFill, d.heartStroke, 17, e.id)}</button>
       <div style="position:absolute;bottom:10px;left:10px;display:flex;align-items:center;gap:6px;background:${d.statusBg};color:${d.statusColor};font-size:11px;font-weight:700;padding:5px 10px;border-radius:999px;backdrop-filter:blur(6px);"><span style="width:6px;height:6px;border-radius:50%;background:${d.dotColor};"></span>${d.statusText}</div>
     </div>
@@ -429,11 +521,11 @@ function cardEdit(e) {
   const distanceLine = d.distanceText
     ? `<span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#FCA5A5;background:rgba(239,68,68,.2);padding:3px 9px;border-radius:999px;white-space:nowrap;">📍 ${d.distanceText}</span>`
     : '';
-  return `<div style="position:relative;width:100%;height:392px;border-radius:22px;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 10px 26px rgba(17,24,39,.18);display:flex;flex-direction:column;justify-content:space-between;">
+  return `<div style="position:relative;width:100%;height:392px;border-radius:22px;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif;display:flex;flex-direction:column;justify-content:space-between;">
     ${cardVisual(d)}
     <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(17,24,39,.22) 0%,rgba(17,24,39,0) 32%,rgba(17,24,39,.55) 68%,rgba(17,24,39,.93) 100%);pointer-events:none;"></div>
     <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:14px;">
-      <div style="background:#fff;color:#111827;font-weight:800;font-size:14px;padding:6px 13px;border-radius:999px;box-shadow:0 2px 10px rgba(0,0,0,.18);">${d.price}</div>
+      <div style="background:#fff;color:#111827;font-weight:800;font-size:14px;padding:6px 13px;border-radius:999px;">${d.price}</div>
       <button data-fav="${e.id}" style="width:38px;height:38px;border:none;border-radius:50%;background:rgba(255,255,255,.18);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:0;">${SVG.heart(d.heartFill, d.heartStroke, 19, e.id)}</button>
     </div>
     <div style="position:relative;z-index:1;padding:16px 16px 18px;display:flex;flex-direction:column;gap:9px;">
@@ -477,7 +569,7 @@ function filterPanel(filters) {
       </div>
       <div style="flex:1;overflow-y:auto;padding:20px 20px 100px;">${sections}</div>
       <div style="position:absolute;left:0;right:0;bottom:0;padding:16px 20px calc(16px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(255,255,255,0) 0%,#fff 24%);">
-        <button type="button" data-filter-apply style="width:100%;height:54px;border:none;border-radius:999px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;box-shadow:0 8px 24px rgba(255,87,34,.28);">Aplicar filtros</button>
+        <button type="button" data-filter-apply style="width:100%;height:54px;border:none;border-radius:999px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;">Aplicar filtros</button>
       </div>
     </div>
   </div>`;
@@ -591,19 +683,19 @@ function favoritesTabView() {
   const heartIcon = `<svg width="46" height="46" viewBox="0 0 24 24" fill="${AS}" stroke="${AC}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path></svg>`;
 
   if (favIds.length === 0) {
-    return `<div id="content" style="display:flex;flex-direction:column;min-height:calc(100dvh - 88px);">
+    return `<div id="content" style="display:flex;flex-direction:column;min-height:100%;">
       <!-- Cabecera -->
       <div style="padding:6px 20px 0;">
         <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:22px;color:#111827;letter-spacing:-.03em;line-height:50px;">Favoritos</div>
       </div>
       <!-- Estado vacío -->
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 36px 80px;text-align:center;">
-        <div style="width:96px;height:96px;border-radius:32px;background:${AS};display:flex;align-items:center;justify-content:center;margin-bottom:24px;box-shadow:0 0 0 14px rgba(255,87,34,.04),0 0 0 28px rgba(255,87,34,.02);">
+        <div style="width:96px;height:96px;border-radius:32px;background:${AS};display:flex;align-items:center;justify-content:center;margin-bottom:24px;">
           ${heartIcon}
         </div>
         <div style="font-family:'Sora',sans-serif;font-weight:800;font-size:20px;color:#111827;letter-spacing:-.03em;line-height:1.2;margin-bottom:10px;">Aún no tienes favoritos</div>
         <div style="color:#9CA3AF;font-size:14px;font-weight:500;line-height:1.65;max-width:240px;">Pulsa el corazón en cualquier evento para guardarlo aquí y no perdértelo.</div>
-        <button type="button" data-tab="home" style="margin-top:32px;display:inline-flex;align-items:center;gap:9px;border:none;border-radius:999px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:14.5px;padding:15px 32px;box-shadow:0 10px 28px rgba(255,87,34,.30);cursor:pointer;">Explorar eventos</button>
+        <button type="button" data-tab="home" style="margin-top:32px;display:inline-flex;align-items:center;gap:9px;border:none;border-radius:999px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:14.5px;padding:15px 32px;cursor:pointer;">Explorar eventos</button>
       </div>
     </div>`;
   }
@@ -649,7 +741,7 @@ function profileTabView() {
   const chevron = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C9CE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>`;
 
   const card = content =>
-    `<div style="background:#fff;border:1px solid #EFEFF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 6px rgba(17,24,39,.05);">${content}</div>`;
+    `<div style="background:#fff;border:1px solid #EFEFF1;border-radius:18px;overflow:hidden;">${content}</div>`;
 
   const row = (iconSvg, label, value = '', panelId = '', last = false) => {
     const attrs = panelId === 'location'
@@ -716,7 +808,7 @@ function profileTabView() {
     <!-- Card de ahorro -->
     <div style="margin:0 16px 24px;">
       <div style="background:${AS};border:1px solid rgba(255,87,34,.14);border-radius:18px;padding:18px 20px;display:flex;align-items:center;gap:16px;">
-        <div style="width:48px;height:48px;border-radius:14px;background:${AC};display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 6px 16px rgba(255,87,34,.28);">
+        <div style="width:48px;height:48px;border-radius:14px;background:${AC};display:flex;align-items:center;justify-content:center;flex:none;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l7.3-7.3a1 1 0 0 0 0-1.41Z"></path><circle cx="7" cy="7" r="1.5" fill="#fff" stroke="none"></circle></svg>
         </div>
         <div>
@@ -795,7 +887,7 @@ function profilePanelView() {
       ${fieldRow('Nombre', 'text', state.profileName, 'data-edit-name')}
       ${fieldRow('Email', 'email', 'demo@catchtime.app', 'data-edit-email', '', 'El cambio de email requiere verificación.')}
       ${fieldRow('Teléfono', 'tel', '', 'data-edit-phone', '+34 6__ ___ ___')}
-      <button type="button" data-profile-save style="width:100%;height:54px;border:none;border-radius:16px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;cursor:pointer;margin-top:6px;box-shadow:0 8px 22px rgba(255,87,34,.26);">Guardar cambios</button>
+      <button type="button" data-profile-save style="width:100%;height:54px;border:none;border-radius:16px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;cursor:pointer;margin-top:6px;">Guardar cambios</button>
     </div>`;
     return wrap('Editar perfil', body);
   }
@@ -810,12 +902,12 @@ function profilePanelView() {
           <div style="font-size:12.5px;color:#9CA3AF;margin-top:2px;">${sub}</div>
         </div>
         <div data-notif-toggle="${key}" style="position:relative;width:46px;height:26px;border-radius:13px;background:${on ? AC : '#E5E7EB'};cursor:pointer;flex:none;">
-          <div style="position:absolute;top:3px;left:${on ? '23px' : '3px'};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18);"></div>
+          <div style="position:absolute;top:3px;left:${on ? '23px' : '3px'};width:20px;height:20px;border-radius:50%;background:#fff;border:1px solid #E5E7EB;"></div>
         </div>
       </div>`;
     };
     const body = `<div style="padding:20px 16px;">
-      <div style="background:#fff;border:1px solid #EFEFF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 6px rgba(17,24,39,.04);">
+      <div style="background:#fff;border:1px solid #EFEFF1;border-radius:18px;overflow:hidden;">
         ${toggle('events',    'Eventos cercanos',     'Nuevos eventos en tu zona')}
         ${divider}
         ${toggle('offers',    'Ofertas y descuentos', 'Alertas de precio')}
@@ -873,7 +965,7 @@ function profilePanelView() {
       </div>`;
     }).join('');
     const body = `<div style="padding:20px 16px;">
-      <div style="background:#fff;border:1px solid #EFEFF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 6px rgba(17,24,39,.04);">${rows}</div>
+      <div style="background:#fff;border:1px solid #EFEFF1;border-radius:18px;overflow:hidden;">${rows}</div>
     </div>`;
     return wrap('Idioma', body);
   }
@@ -898,7 +990,7 @@ function profilePanelView() {
       </div>`;
     }).join('');
     const body = `<div style="padding:20px 16px;">
-      <div style="background:#fff;border:1px solid #EFEFF1;border-radius:18px;overflow:hidden;box-shadow:0 1px 6px rgba(17,24,39,.04);">${rows}</div>
+      <div style="background:#fff;border:1px solid #EFEFF1;border-radius:18px;overflow:hidden;">${rows}</div>
     </div>`;
     return wrap('Centro de ayuda', body);
   }
@@ -924,7 +1016,7 @@ function profilePanelView() {
         <div style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:11.5px;color:#9CA3AF;margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase;">Mensaje</div>
         <textarea data-contact-message placeholder="Escribe tu mensaje aquí..." rows="5" style="width:100%;border:1.5px solid #EFEFF1;border-radius:14px;padding:13px 15px;font-family:'Plus Jakarta Sans',sans-serif;font-size:15px;color:#111827;background:#fff;outline:none;resize:none;-webkit-appearance:none;box-sizing:border-box;line-height:1.5;"></textarea>
       </div>
-      <button type="button" data-contact-send style="height:54px;border:none;border-radius:16px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:4px;box-shadow:0 8px 20px rgba(255,87,34,.24);">Enviar mensaje</button>
+      <button type="button" data-contact-send style="height:54px;border:none;border-radius:16px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:4px;">Enviar mensaje</button>
     </div>`;
     return wrap('Contactar', body);
   }
@@ -954,7 +1046,7 @@ function profilePanelView() {
       <div style="display:flex;gap:2px;margin-bottom:10px;">${stars}</div>
       <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:${AC};min-height:22px;">${state.profileRating ? labels[state.profileRating] : ''}</div>
       <textarea data-rate-comment placeholder="Cuéntanos más (opcional)..." rows="3" style="width:100%;margin-top:22px;border:1.5px solid #EFEFF1;border-radius:14px;padding:13px 15px;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:#111827;background:#fff;outline:none;resize:none;box-sizing:border-box;"></textarea>
-      <button type="button" data-rate-submit style="width:100%;height:54px;border:none;border-radius:16px;background:${state.profileRating ? AC : '#E5E7EB'};color:${state.profileRating ? '#fff' : '#9CA3AF'};font-family:'Sora',sans-serif;font-weight:700;font-size:15px;cursor:${state.profileRating ? 'pointer' : 'default'};margin-top:14px;${state.profileRating ? 'box-shadow:0 8px 20px rgba(255,87,34,.24);' : ''}">Enviar valoración</button>
+      <button type="button" data-rate-submit style="width:100%;height:54px;border:none;border-radius:16px;background:${state.profileRating ? AC : '#E5E7EB'};color:${state.profileRating ? '#fff' : '#9CA3AF'};font-family:'Sora',sans-serif;font-weight:700;font-size:15px;cursor:${state.profileRating ? 'pointer' : 'default'};margin-top:14px;">Enviar valoración</button>
     </div>`;
     return wrap('Valorar la app', body);
   }
