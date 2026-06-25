@@ -33,6 +33,35 @@ button{ font-family:inherit; cursor:pointer; }
   --line:#EFEFF1;
 }
 
+/* Patrón pill (misma familia visual que #nav-pill) */
+.pill-surface{
+  background:#fff;
+  border:1px solid rgba(239,239,241,.9);
+  border-radius:999px;
+  box-shadow:0 10px 40px rgba(17,24,39,.12), 0 2px 8px rgba(17,24,39,.06);
+}
+
+.pill-icon-btn{
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  border:1px solid rgba(239,239,241,.9);
+  background:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:none;
+  padding:0;
+  box-shadow:0 10px 40px rgba(17,24,39,.12), 0 2px 8px rgba(17,24,39,.06);
+  -webkit-tap-highlight-color:transparent;
+}
+
+.pill-icon-btn--accent{
+  background:var(--accent);
+  border-color:var(--accent);
+  box-shadow:0 6px 18px rgba(255,87,34,.32);
+}
+
 /* contenedor de la app — full-bleed, ocupa toda la pantalla */
 #app{
   position:relative;
@@ -192,9 +221,10 @@ button{ font-family:inherit; cursor:pointer; }
   gap:10px;
   height:50px;
   padding:0 16px;
-  border-radius:16px;
-  border:1px solid #E6E7EB;
+  border-radius:999px;
+  border:1px solid rgba(239,239,241,.9);
   background:#FFFFFF;
+  box-shadow:0 10px 40px rgba(17,24,39,.12), 0 2px 8px rgba(17,24,39,.06);
 }
 
 #map-search-form input{

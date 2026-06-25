@@ -25,7 +25,8 @@ const state = {
   userLocation: null,  // { lat, lng } — ubicación actual del usuario (solicitada una sola vez)
   // ── Perfil ──
   profilePanel: null,
-  profileName: 'David Selles',
+  profileName: 'MPV Demo',
+  profileAvatar: 'assets/user/mpv_ic.png',
   profileEditingName: false,
   profileNotifs: { events: true, offers: true, reminders: true },
   profileRating: 0,
@@ -685,12 +686,12 @@ function useCurrentLocationOnMap() {
 function renderSearchBar() {
   const active = activeFilterCount();
   return `<div style="padding:14px 20px 0;">
-    <div style="display:flex;align-items:center;gap:10px;height:50px;background:#fff;border:1px solid #EFEFF1;border-radius:16px;padding:0 6px 0 14px;box-shadow:0 2px 10px rgba(17,24,39,.04);">
+    <div class="pill-surface" style="display:flex;align-items:center;gap:10px;height:50px;padding:0 5px 0 16px;">
       ${SVG.search('#9CA3AF')}
       <input data-search type="search" enterkeyhint="search" placeholder="Busca conciertos, deporte, planes…" value="${state.query.replace(/"/g, '&quot;')}" style="flex:1;border:none;outline:none;background:transparent;color:#111827;font-size:14.5px;font-weight:500;font-family:inherit;">
-      <button type="button" data-filter-open style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border:none;border-radius:11px;background:${AC};">
+      <button type="button" data-filter-open class="pill-icon-btn pill-icon-btn--accent" style="position:relative;width:40px;height:40px;">
         ${SVG.sliders('#fff')}
-        ${active ? `<span style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#111827;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;box-sizing:border-box;border:2px solid #fff;padding:0;">${active}</span>` : ''}
+        ${active ? `<span style="position:absolute;top:-3px;right:-3px;width:18px;height:18px;border-radius:50%;background:#111827;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;box-sizing:border-box;border:2px solid #fff;padding:0;">${active}</span>` : ''}
       </button>
     </div>
   </div>`;
@@ -754,16 +755,7 @@ function render() {
 
   const home = `
     <div id="content">
-      <!-- cabecera: ubicación pulsable + notificaciones -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 20px 0;">
-        <button type="button" data-location-open aria-label="Cambiar ubicación" style="display:flex;align-items:center;gap:7px;height:44px;padding:0;border:none;background:none;">
-          ${SVG.pin(AC, 22)}
-          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:16px;color:#1F2937;letter-spacing:-.01em;">${state.location}</span>
-          ${SVG.chevDown('#6B7280', 17)}
-        </button>
-        <button style="position:relative;width:44px;height:44px;border-radius:14px;border:1px solid #EFEFF1;background:#fff;display:flex;align-items:center;justify-content:center;">${SVG.bell('#111827')}<span style="position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:${AC};border:2px solid #fff;"></span></button>
-      </div>
-
+      ${homeUserHeader()}
       ${renderSearchBar()}
       ${body}
     </div>
@@ -771,26 +763,24 @@ function render() {
 
   const map       = `${mapTabView()}${bottomNav()}`;
   const favorites = `${favoritesTabView()}${bottomNav()}`;
-  const profile   = `${profileTabView()}${bottomNav()}`;
   const tickets   = `${ticketsTabView()}${bottomNav()}`;
+  const profile   = `${profileTabView()}${state.profilePanel ? profilePanelView() : ''}${bottomNav()}`;
   const overlays  = `${state.filtersOpen ? filterPanel(state.draftFilters) : ''}${state.locationOpen ? locationPanel(state.locationQuery) : ''}`;
-  const profilePanelOpen  = state.tab === 'profile' && !!state.profilePanel;
   const ticketDetailOpen  = state.tab === 'tickets' && !!state.ticketDetail;
+  const profilePanelOpen  = state.tab === 'profile' && !!state.profilePanel;
   const screen = modalOpen
     ? overlays
     : ticketDetailOpen
       ? ticketDetailView()
-      : profilePanelOpen
-        ? profilePanelView()
-        : state.tab === 'discover'
-          ? map
-          : state.tab === 'favorites'
-            ? favorites
-            : state.tab === 'tickets'
-              ? tickets
-              : state.tab === 'profile'
-                ? profile
-                : home;
+      : state.tab === 'discover'
+        ? map
+        : state.tab === 'favorites'
+          ? favorites
+          : state.tab === 'tickets'
+            ? tickets
+            : state.tab === 'profile'
+              ? profile
+              : home;
 
   document.getElementById('app').innerHTML = screen;
 
@@ -824,7 +814,7 @@ function render() {
   }
 
   // bloquea el scroll del fondo mientras hay una pantalla modal abierta
-  document.body.style.overflow = (modalOpen || ticketDetailOpen) ? 'hidden' : '';
+  document.body.style.overflow = (modalOpen || ticketDetailOpen || profilePanelOpen) ? 'hidden' : '';
 }
 
 function openLocation() {
@@ -1060,6 +1050,12 @@ document.addEventListener('click', e => {
     return;
   }
 
+  if (e.target.closest('[data-profile-change-photo]')) {
+    const input = document.querySelector('[data-profile-photo-input]');
+    if (input) input.click();
+    return;
+  }
+
   if (e.target.closest('[data-logout-confirm]')) {
     state.profilePanel = null;
     state.tab = 'home';
@@ -1182,6 +1178,19 @@ document.addEventListener('input', e => {
     state.locationFocused = true;
     render();
   }
+});
+
+document.addEventListener('change', e => {
+  if (!e.target.matches('[data-profile-photo-input]')) return;
+  const file = e.target.files && e.target.files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    state.profileAvatar = reader.result;
+    render();
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
 });
 
 document.addEventListener('focusin', e => {

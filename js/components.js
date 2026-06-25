@@ -296,9 +296,34 @@ function bottomNav() {
       ${navItem('favorites', 'Favoritos', '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path>')}
       ${navItem('discover', 'Mapa', mapIcon)}
       ${navItem('tickets', 'Entradas', '<path d="M4 6h16a1 1 0 0 1 1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2 2 0 0 0 0-4V7a1 1 0 0 1 1-1Z"></path><path d="M14 6v12"></path>')}
-      ${navItem('profile', 'Perfil', '<circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>')}
     </div>
   </nav>`;
+}
+
+// Avatar circular — imagen real del usuario
+function userAvatar(size = 44) {
+  const src = state.profileAvatar || 'assets/user/mpv_ic.png';
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;flex:none;">
+    <img src="${src}" alt="${state.profileName}" style="width:100%;height:100%;object-fit:cover;display:block;">
+  </div>`;
+}
+
+// Cabecera Home: foto + nombre y debajo ubicación con dropdown
+function homeUserHeader() {
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px 0;">
+    <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+      <button type="button" data-tab="profile" aria-label="Mi perfil" style="border:none;background:none;padding:0;flex:none;cursor:pointer;">${userAvatar(50)}</button>
+      <div style="min-width:0;flex:1;">
+        <div style="font-family:'Sora',sans-serif;font-weight:600;font-size:16px;color:#111827;letter-spacing:-.02em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${state.profileName}</div>
+        <button type="button" data-location-open aria-label="Cambiar ubicación" style="display:flex;align-items:center;gap:4px;margin-top:3px;padding:0;border:none;background:none;max-width:100%;">
+          ${SVG.pin('#9CA3AF', 13)}
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:500;font-size:12.5px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${state.location}</span>
+          ${SVG.chevDown('#9CA3AF', 13)}
+        </button>
+      </div>
+    </div>
+    <button type="button" class="pill-icon-btn" aria-label="Notificaciones" style="width:48px;height:48px;margin-left:10px;">${SVG.bell('#111827', 22)}</button>
+  </div>`;
 }
 
 // Pantalla de mapa (vista grande + buscador + filtros por categoría + preview)
@@ -681,10 +706,10 @@ function profileTabView() {
 
     <!-- Avatar + nombre -->
     <div style="display:flex;align-items:center;gap:15px;padding:8px 20px 20px;">
-      <div style="width:64px;height:64px;border-radius:20px;background:linear-gradient(135deg,${AC} 0%,#FF8A50 100%);display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-weight:800;font-size:26px;color:#fff;flex:none;box-shadow:0 6px 18px rgba(255,87,34,.30);">D</div>
+      <button type="button" data-profile-panel="editProfile" aria-label="Editar perfil" style="border:none;background:none;padding:0;flex:none;cursor:pointer;">${userAvatar(64)}</button>
       <div style="flex:1;min-width:0;">
         ${nameArea}
-        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:500;color:#9CA3AF;margin-top:4px;">david@catchtime.app</div>
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:500;color:#9CA3AF;margin-top:4px;">demo@catchtime.app</div>
       </div>
     </div>
 
@@ -762,12 +787,13 @@ function profilePanelView() {
   // ── Editar perfil ────────────────────────────────────────────────────────────
   if (panel === 'editProfile') {
     const body = `<div style="padding:24px 20px;display:flex;flex-direction:column;gap:14px;">
+      <input type="file" accept="image/*" data-profile-photo-input style="display:none;">
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:10px;">
-        <div style="width:80px;height:80px;border-radius:24px;background:linear-gradient(135deg,${AC} 0%,#FF8A50 100%);display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-weight:800;font-size:32px;color:#fff;box-shadow:0 6px 18px rgba(255,87,34,.30);">D</div>
-        <button type="button" style="border:none;background:none;color:${AC};font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:13.5px;cursor:pointer;padding:0;">Cambiar foto</button>
+        ${userAvatar(80)}
+        <button type="button" data-profile-change-photo style="border:none;background:none;color:${AC};font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:13.5px;cursor:pointer;padding:0;">Cambiar foto</button>
       </div>
       ${fieldRow('Nombre', 'text', state.profileName, 'data-edit-name')}
-      ${fieldRow('Email', 'email', 'david@catchtime.app', 'data-edit-email', '', 'El cambio de email requiere verificación.')}
+      ${fieldRow('Email', 'email', 'demo@catchtime.app', 'data-edit-email', '', 'El cambio de email requiere verificación.')}
       ${fieldRow('Teléfono', 'tel', '', 'data-edit-phone', '+34 6__ ___ ___')}
       <button type="button" data-profile-save style="width:100%;height:54px;border:none;border-radius:16px;background:${AC};color:#fff;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;cursor:pointer;margin-top:6px;box-shadow:0 8px 22px rgba(255,87,34,.26);">Guardar cambios</button>
     </div>`;
