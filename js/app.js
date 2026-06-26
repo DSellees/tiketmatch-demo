@@ -208,15 +208,22 @@ function setMapStatus(message, timeout = 2200) {
 }
 
 function eventLngLat(event) {
-  if (Number.isFinite(event.lng) && Number.isFinite(event.lat)) {
-    return [event.lng, event.lat];
+  let lng = event.lng;
+  let lat = event.lat;
+
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+    const base = AREA_CENTER[event.area] || MAP_DEFAULT.center;
+    lng = base[0];
+    lat = base[1];
   }
-  // Fallback: dispersa alrededor del centro de la zona si faltan coordenadas
-  const base = AREA_CENTER[event.area] || MAP_DEFAULT.center;
+
+  // Dispersión determinista basada en el ID del evento para evitar solapes en el mapa
+  // (por ejemplo, Spotify Camp Nou y Palau Blaugrana comparten coordenadas exactas)
   const n = Number(String(event.id).replace('e', '')) || 1;
-  const lngOffset = ((n % 3) - 1) * 0.0058;
-  const latOffset = (((n + 1) % 3) - 1) * 0.0046;
-  return [base[0] + lngOffset, base[1] + latOffset];
+  const angle = (n * 137.5) * Math.PI / 180; // Distribución por ángulo de oro
+  const radius = 0.0003; // ~30 metros en grados de coordenada
+  
+  return [lng + Math.cos(angle) * radius, lat + Math.sin(angle) * radius];
 }
 
 function clearEventMarkers() {
@@ -771,6 +778,33 @@ function renderSearchBar() {
 }
 
 function renderHomeSections() {
+  const rendered = new Set();
+  const getUnique = (list, limit = 6) => {
+    const result = [];
+    for (const id of list) {
+      if (!rendered.has(id)) {
+        result.push(id);
+        rendered.add(id);
+        if (limit && result.length >= limit) break;
+      }
+    }
+    return result;
+  };
+
+  const shownOportunos = getUnique(OPORTUNOS, 6);
+  const shownRecommended = getUnique(RECOMMENDED, 6);
+  const shownPremium = PREMIUM; // sección destacada muestra siempre sus eventos fijos
+
+  // Calcular dinámicamente los eventos más cercanos a la ubicación del usuario,
+  // permitiendo duplicados para evitar que la sección geográfica se muestre vacía.
+  const ref = state.userLocation || AREA_COORDS[state.location] || AREA_COORDS.Barcelona;
+  const eventsWithDistance = EVENTS.map(e => {
+    const km = haversineDistance(ref.lat, ref.lng, e.lat, e.lng);
+    return { id: e.id, km };
+  });
+  eventsWithDistance.sort((a, b) => a.km - b.km);
+  const shownNearby = eventsWithDistance.slice(0, 6).map(item => item.id);
+
   const stdRow  = ids => ids.map(id => `<div style="flex:0 0 auto;width:278px;">${cardStd(EV[id])}</div>`).join('');
   const editRow = ids => ids.map(id => `<div style="flex:0 0 auto;width:240px;">${cardEdit(EV[id])}</div>`).join('');
 
@@ -780,21 +814,14 @@ function renderHomeSections() {
         <div style="font-family:'Sora';font-weight:700;font-size:19px;color:#111827;letter-spacing:-.02em;">Oportunidades Catchtime</div>
         <span style="display:inline-flex;align-items:center;gap:5px;color:${AC};font-size:10.5px;font-weight:800;background:${AS};padding:4px 9px;border-radius:999px;">&lt;24 H</span>
       </div>
-      <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;">${stdRow(OPORTUNOS)}</div>
-
-      <!-- Populares ahora -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;margin:22px 0 12px;">
-        <div style="font-family:'Sora';font-weight:700;font-size:19px;color:#111827;letter-spacing:-.02em;">Populares ahora</div>
-        <button style="border:none;background:none;color:${AC};font-size:13px;font-weight:700;">Ver todo</button>
-      </div>
-      <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;">${stdRow(POPULAR)}</div>
+      <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;">${stdRow(shownOportunos)}</div>
 
       <!-- Recomendado para ti -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;margin:24px 0 12px;">
         <div style="font-family:'Sora';font-weight:700;font-size:19px;color:#111827;letter-spacing:-.02em;">Recomendado para ti</div>
         <button style="border:none;background:none;color:${AC};font-size:13px;font-weight:700;">Ver todo</button>
       </div>
-      <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;">${stdRow(RECOMMENDED)}</div>
+      <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;">${stdRow(shownRecommended)}</div>
 
       <!-- Banda destacada (deporte) -->
       <div style="margin:26px 0 6px;background:#111827;padding:22px 0 24px;">
@@ -802,7 +829,7 @@ function renderHomeSections() {
           <div style="display:inline-flex;align-items:center;gap:6px;background:${AS};color:${AC};font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:5px 11px;border-radius:999px;">Destacado · Deporte</div>
           <div style="color:rgba(255,255,255,.78);font-size:15px;font-weight:600;margin-top:12px;line-height:1.45;max-width:320px;">Los partidos más esperados de la ciudad, con venta oficial dentro de Catchtime.</div>
         </div>
-        <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:16px 20px 2px;">${editRow(PREMIUM)}</div>
+        <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:16px 20px 2px;">${editRow(shownPremium)}</div>
       </div>
 
       <!-- Trending en Barcelona -->
@@ -819,7 +846,7 @@ function renderHomeSections() {
         <div style="font-family:'Sora';font-weight:700;font-size:19px;color:#111827;letter-spacing:-.02em;">Eventos cerca de ti</div>
         <button style="border:none;background:none;color:${AC};font-size:13px;font-weight:700;">Ver todo</button>
       </div>
-      <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;">${stdRow(NEARBY)}</div>`;
+      <div data-scroll style="display:flex;gap:14px;overflow-x:auto;padding:0 20px 4px;">${stdRow(shownNearby)}</div>`;
 }
 
 // ── Simulación en vivo del precio en el detalle de evento ────────────────────
@@ -834,9 +861,10 @@ function startPriceAnim(id) {
 
   const init = +svg.dataset.init;
   const base = +svg.dataset.cur;
-  const maxCur = Math.floor(init * 0.40);
-  const band = Math.max(1, Math.round(base * 0.06));
+  const floor = Math.round(init * 0.30);  // nunca por debajo del 30% del precio inicial
+  const ceiling = base;                   // no sube por encima del precio actual
   let cur = base;
+  let ticksSinceRepunte = 0;
 
   const priceEl = document.getElementById('pc-price-' + id);
   const saveEl  = document.getElementById('pc-save-' + id);
@@ -847,17 +875,24 @@ function startPriceAnim(id) {
   }
 
   priceAnimTimer = setInterval(() => {
-    const dir = cur > base ? (Math.random() < 0.72 ? -1 : 1)
-              : cur < base ? (Math.random() < 0.72 ? 1 : -1)
-              : (Math.random() < 0.5 ? -1 : 1);
-    const mag = 1;
-    let next = cur + dir * mag;
-    if (next > maxCur) next = maxCur;
-    if (next > base + band) next = base + band;
-    if (next < base - band) next = base - band;
+    ticksSinceRepunte++;
+    let next;
+    // Repunte ocasional: cada 5-9 ticks, sube 4-9€ de golpe
+    const isRepunte = ticksSinceRepunte >= 5 && Math.random() < 0.28;
+    if (isRepunte) {
+      const bounce = Math.round(4 + Math.random() * 5);
+      next = Math.min(cur + bounce, ceiling);
+      ticksSinceRepunte = 0;
+    } else {
+      // Tendencia bajista: 72% baja, 28% sube; pasos de 1-3€
+      const dir = Math.random() < 0.72 ? -1 : 1;
+      const mag = 1 + Math.floor(Math.random() * 3);
+      next = cur + dir * mag;
+    }
+    next = Math.max(floor, Math.min(ceiling, next));
     cur = next;
     paint();
-  }, 24000);
+  }, 5000);
 }
 
 function render() {

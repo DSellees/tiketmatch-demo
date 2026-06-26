@@ -204,26 +204,41 @@ function ticketsTabView() {
 // Usa datos reales si existen (priceHistory/initialPrice/currentPrice/...),
 // si no, deriva una curva descendente determinista a partir de priceNum.
 function priceTrend(e) {
-  const init = e.initialPrice || Math.round((e.currentPrice || e.priceNum) / 0.35);
+  const init = e.initialPrice || Math.round((e.currentPrice || e.priceNum) / 0.78);
   let cur  = e.currentPrice || e.priceNum;
-  const maxCur = Math.floor(init * 0.40);
-  if (cur > maxCur) cur = maxCur;
   const seed = e.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
 
+  const floor = Math.round(init * 0.30);
   let pts;
   if (Array.isArray(e.priceHistory) && e.priceHistory.length > 1) {
     pts = e.priceHistory.slice();
   } else {
-    const n = 7;
+    const n = 14;
     pts = [];
+    // Genera caída general con 2-3 repuntes deterministas usando seed
+    const repunteAt = new Set([
+      2 + (seed % 3),          // primer repunte (índice 2-4)
+      6 + ((seed * 3) % 3),    // segundo repunte (índice 6-8)
+      10 + ((seed * 7) % 2),   // tercer repunte opcional (10-11)
+    ]);
+    let running = init;
     for (let i = 0; i < n; i++) {
-      const frac  = i / (n - 1);
-      const base  = init + (cur - init) * Math.pow(frac, 0.8);     // caída suave
-      const noise = (((seed * (i + 3)) % 7) - 3) * (init - cur) * 0.012; // micro-ruido
-      pts.push(Math.round(base + noise));
+      if (i === 0) { pts.push(init); continue; }
+      if (i === n - 1) { pts.push(Math.max(floor, cur)); continue; }
+      const frac = i / (n - 1);
+      const trend = init + (cur - init) * Math.pow(frac, 0.7);
+      if (repunteAt.has(i)) {
+        // Repunte: sube 6-12% respecto al punto anterior
+        const bounce = Math.round(pts[i - 1] * (1 + 0.06 + ((seed * (i + 1)) % 7) * 0.01));
+        running = Math.min(bounce, init);
+      } else {
+        const noise = (((seed * (i + 5) * 1103) % 9) - 4) * (init - cur) * 0.008;
+        running = Math.round(trend + noise);
+      }
+      pts.push(Math.max(floor, running));
     }
     pts[0] = init;
-    pts[n - 1] = cur;
+    pts[n - 1] = Math.max(floor, cur);
   }
 
   return {
@@ -1063,9 +1078,15 @@ function mapTabView() {
 
 // Mini-card flotante anclada a cada punto del mapa (se inserta como marcador DOM)
 function mapMarkerMarkup(e) {
+  const thumb = e.portada
+    ? `<span class="ev-thumb" style="background:${CATBG[e.cat]};">
+        <img src="${e.portada}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" aria-hidden="true">
+        <span class="ev-thumb-ic" style="position:relative;z-index:2;">${SVG.catIcon(e.cat, '#fff', 14)}</span>
+       </span>`
+    : `<span class="ev-thumb" style="background:${CATBG[e.cat]};"><span class="ev-thumb-ic">${SVG.catIcon(e.cat, '#fff', 14)}</span></span>`;
   return `
     <div class="ev-card">
-      <span class="ev-thumb" style="background:${CATBG[e.cat]};"><span class="ev-thumb-ic">${SVG.catIcon(e.cat, '#fff', 14)}</span></span>
+      ${thumb}
       <span class="ev-meta">
         <span class="ev-t">${e.title}</span>
         <span class="ev-s">${e.price} · ${e.dateShort}</span>

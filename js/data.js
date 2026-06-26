@@ -41,9 +41,9 @@ const PORTADA_FIT = {
   festival:  'center center',
 };
 
-// Tope Catchtime: precio actual ≤ 40 % del valor de salida (initialPrice)
+// Precio Catchtime: descuento del 20-25% sobre precio de salida (pct entre 0.75-0.80)
 function catchtimePrice(initialPrice, pct) {
-  const currentPrice = Math.floor(initialPrice * Math.min(0.40, pct));
+  const currentPrice = Math.round(initialPrice * pct);
   return {
     initialPrice,
     currentPrice,
@@ -101,7 +101,7 @@ const EVENTS = [
     dateShort:'MAR 23 JUN', date:'2026-06-23', time:'21:00',
     lng:2.1228, lat:41.3809,
     portada: 'assets/portadas/Futbol/el-clasico-laliga.png',
-    ...catchtimePrice(340, 0.40),
+    ...catchtimePrice(340, 0.78),
   },
   // e25 — Valencia CF vs Girona FC (oportuno · <24 h)
   {
@@ -114,7 +114,7 @@ const EVENTS = [
     dateShort:'MIÉ 24 JUN', date:'2026-06-24', time:'10:30',
     lng:-0.3582, lat:39.4747,
     portada: 'assets/portadas/Futbol/vlcvsgirona.png',
-    ...catchtimePrice(80, 0.40),
+    ...catchtimePrice(80, 0.76),
   },
   // e24 — Atlético de Madrid vs Real Betis (oportuno · <24 h)
   {
@@ -127,7 +127,7 @@ const EVENTS = [
     dateShort:'MIÉ 24 JUN', date:'2026-06-24', time:'11:00',
     lng:-3.5994, lat:40.4361,
     portada: 'assets/portadas/Futbol/ATHvsBETIS.png',
-    ...catchtimePrice(145, 0.38),
+    ...catchtimePrice(145, 0.80),
   },
   // e23 — Derbi de Barcelona (oportuno · <24 h)
   {
@@ -140,7 +140,7 @@ const EVENTS = [
     dateShort:'MAR 23 JUN', date:'2026-06-23', time:'20:00',
     lng:2.1228, lat:41.3809,
     portada: 'assets/portadas/Futbol/BCNvsRCD.png',
-    ...catchtimePrice(190, 0.40),
+    ...catchtimePrice(190, 0.77),
   },
   // e26 — Espanyol vs Villarreal (oportuno · <24 h)
   {
@@ -153,7 +153,7 @@ const EVENTS = [
     dateShort:'MAR 23 JUN', date:'2026-06-23', time:'19:00',
     lng:2.0747, lat:41.3475,
     portada: 'assets/portadas/Futbol/RCDvsVILLA.png',
-    ...catchtimePrice(90, 0.36),
+    ...catchtimePrice(90, 0.79),
   },
   // e27 — Balonmano Clásico (oportuno · <24 h)
   {
@@ -166,7 +166,7 @@ const EVENTS = [
     dateShort:'MAR 23 JUN', date:'2026-06-23', time:'20:30',
     lng:2.1228, lat:41.3809,
     portada: 'assets/portadas/balonamno/barca-vs-madrid-ehf.png',
-    ...catchtimePrice(110, 0.40),
+    ...catchtimePrice(110, 0.75),
   },
   // e28 — Euroliga Clásico (oportuno · <24 h)
   {
@@ -179,33 +179,7 @@ const EVENTS = [
     dateShort:'MAR 23 JUN', date:'2026-06-23', time:'21:15',
     lng:2.1228, lat:41.3809,
     portada: 'assets/portadas/basquet/barca-vs-madrid-euroliga.webp',
-    ...catchtimePrice(130, 0.40),
-  },
-  // e29 — Euroliga Clásico · Jornada 2 (oportuno · <24 h)
-  {
-    id:'e29', cat:'basket', status:'avail',
-    homeTeam:'Barça Basket', awayTeam:'Real Madrid',
-    homeCrest:'fcb',         awayCrest:'rma',
-    competition:'EuroLiga',
-    title:'Euroliga · Clásico',
-    venue:'Palau Blaugrana', area:'Les Corts',
-    dateShort:'MIÉ 24 JUN', date:'2026-06-24', time:'11:30',
-    lng:2.1228, lat:41.3809,
-    portada: 'assets/portadas/basquet/barca-vs-madrid-euroliga-alt.png',
-    ...catchtimePrice(125, 0.40),
-  },
-  // e30 — Balonmano Cuartos (oportuno · <24 h)
-  {
-    id:'e30', cat:'balonmano', status:'soon',
-    homeTeam:'FC Barcelona', awayTeam:'Real Madrid',
-    homeCrest:'fcb',         awayCrest:'rma',
-    competition:'EHF Champions League',
-    title:'Champions · Cuartos',
-    venue:'Palau Blaugrana', area:'Les Corts',
-    dateShort:'MIÉ 24 JUN', date:'2026-06-24', time:'11:15',
-    lng:2.1228, lat:41.3809,
-    portada: 'assets/portadas/balonamno/barca-vs-madrid-ehf-cuartos.png',
-    ...catchtimePrice(95, 0.40),
+    ...catchtimePrice(130, 0.78),
   },
   // e31 — Olympiacos vs Real Madrid (oportuno · <24 h)
   {
@@ -218,7 +192,7 @@ const EVENTS = [
     dateShort:'MIÉ 24 JUN', date:'2026-06-24', time:'11:00',
     lng:-3.6873, lat:40.4237,
     portada: 'assets/portadas/basquet/olympiacos-vs-madrid-euroliga.webp',
-    ...catchtimePrice(102, 0.40),
+    ...catchtimePrice(102, 0.77),
   },
 
   // ── Conciertos & festivales oportunos (<24 h) ─────────────────────────────
@@ -230,7 +204,7 @@ const EVENTS = [
     dateShort:'MAR 23 JUN', date:'2026-06-23', time:'21:30',
     lng:2.1936, lat:41.3984,
     portada: 'assets/portadas/conciertos/leiva-tour-cuando-te-muerdes-el-labio.jpg',
-    ...catchtimePrice(105, 0.40),
+    ...catchtimePrice(105, 0.79),
   },
   // e33 — La Oreja de Van Gogh
   {
@@ -240,7 +214,7 @@ const EVENTS = [
     dateShort:'MIÉ 24 JUN', date:'2026-06-24', time:'11:00',
     lng:2.1527, lat:41.3634,
     portada: 'assets/portadas/conciertos/la-oreja-de-van-gogh.webp',
-    ...catchtimePrice(138, 0.40),
+    ...catchtimePrice(138, 0.76),
   },
   // e34 — Morat
   {
@@ -250,7 +224,7 @@ const EVENTS = [
     dateShort:'MAR 23 JUN', date:'2026-06-23', time:'20:30',
     lng:2.1527, lat:41.3634,
     portada: 'assets/portadas/conciertos/morat-tour.webp',
-    ...catchtimePrice(120, 0.40),
+    ...catchtimePrice(120, 0.78),
   },
   // e35 — Cruïlla Festival 2026
   {
@@ -260,7 +234,7 @@ const EVENTS = [
     dateShort:'MIÉ 24 JUN', date:'2026-06-24', time:'11:45',
     lng:2.2186, lat:41.4102,
     portada: 'assets/portadas/conciertos/cruilla-festival-2026.jpg',
-    ...catchtimePrice(225, 0.40),
+    ...catchtimePrice(225, 0.75),
   },
   // e36 — Share Festival Barcelona
   {
@@ -270,7 +244,7 @@ const EVENTS = [
     dateShort:'MAR 23 JUN', date:'2026-06-23', time:'18:00',
     lng:2.2186, lat:41.4102,
     portada: 'assets/portadas/conciertos/share-festival-barcelona.png',
-    ...catchtimePrice(88, 0.40),
+    ...catchtimePrice(88, 0.80),
   },
   // e37 — Brunch Electronik Festival 2026
   {
@@ -280,7 +254,7 @@ const EVENTS = [
     dateShort:'MAR 23 JUN', date:'2026-06-23', time:'14:00',
     lng:2.2238, lat:41.4118,
     portada: 'assets/portadas/conciertos/brunch-electronik-festival-2026.webp',
-    ...catchtimePrice(170, 0.40),
+    ...catchtimePrice(170, 0.77),
   },
   // e38 — Primavera Sound Barcelona 2026
   {
@@ -290,7 +264,7 @@ const EVENTS = [
     dateShort:'MIÉ 24 JUN', date:'2026-06-24', time:'11:30',
     lng:2.2186, lat:41.4102,
     portada: 'assets/portadas/conciertos/primavera-sound-barcelona-2026.jpg',
-    ...catchtimePrice(195, 0.40),
+    ...catchtimePrice(195, 0.79),
   },
 ];
 
@@ -346,8 +320,8 @@ function eventAddress(e) {
 // Eventos oportunos Catchtime: todos con portada, <24 h, precio ≤40 % salida
 // Orden: baloncesto → balonmano → festivales → conciertos → fútbol
 const OPORTUNOS = [
-  'e28','e29','e31',
-  'e27','e30',
+  'e28','e31',
+  'e27',
   'e35','e36','e37','e38',
   'e32','e33','e34',
   'e17','e23','e24','e25','e26',
@@ -355,23 +329,22 @@ const OPORTUNOS = [
 
 // colecciones que alimentan cada sección de la Home (solo eventos con portada)
 const EVENTS_FOOTBALL    = ['e17','e23','e24','e25','e26'];
-const EVENTS_BASKET      = ['e28','e29','e31'];
-const EVENTS_BALONMANO   = ['e27','e30'];
+const EVENTS_BASKET      = ['e28','e31'];
+const EVENTS_BALONMANO   = ['e27'];
 const EVENTS_CONCERT     = ['e32','e33','e34'];
 const EVENTS_FESTIVAL    = ['e35','e36','e37','e38'];
 const EVENTS_EXPERIENCE  = [];
 
 // Populares: basket/balonmano primero, festivales intercalados, fútbol al final
-const POPULAR     = ['e28', 'e35', 'e27', 'e36', 'e29', 'e37', 'e30', 'e38', 'e31', 'e17'];
-const PREMIUM     = ['e28', 'e27', 'e29', 'e30', 'e31', 'e17', 'e23', 'e26'];
+const POPULAR     = ['e28', 'e35', 'e27', 'e36', 'e37', 'e38', 'e31', 'e17'];
+const PREMIUM     = ['e17', 'e27', 'e28', 'e31', 'e23'];
 const RECOMMENDED = ['e32', 'e35', 'e33', 'e37', 'e34', 'e36', 'e38', 'e26'];
 const NEARBY      = ['e28', 'e27', 'e35', 'e37', 'e32', 'e36', 'e34', 'e23'];
 const TREND = [
   { id:'e28', rank:1, dir:'up' },
   { id:'e27', rank:2, dir:'up' },
   { id:'e35', rank:3, dir:'up' },
-  { id:'e29', rank:4, dir:'up' },
-  { id:'e36', rank:5, dir:'up' },
+  { id:'e36', rank:4, dir:'up' },
 ];
 
 // ubicación: zonas cercanas (demo) y ciudades populares para el selector
